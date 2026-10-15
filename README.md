@@ -25,7 +25,7 @@ npx serve .
 
 and open the printed `http://localhost:…` URL. Nothing in v1 needs this.
 
-Panel sections are colour-coded and collapse when you click their heading (remembered). Drag the divider between the preview and the control panel to make the panel wider (double-click it to reset); the width is remembered. In any font dropdown, ↑ / ↓ steps to the previous / next font and applies it straight away.
+Panel sections are colour-coded and collapse when you click their heading (remembered). The strip at the top of the panel has a chip per section (click to jump; the one you're in lights up), **collapse all / expand all** for an overview, and **by tool / by part**: *by tool* groups the controls by kind (all colours in Look, all text options in Text style…), *by part* regroups the same settings by what they affect (Executive Producers: title, names per row, banner interval, header style, cell and tile colours; Podcast Producers; Names text; Channel tiles; Header bars & clock; Banners; Promo panel; Boxes & background; Motion & timing; Output). The controls in *by part* are live copies of the real ones, so either arrangement edits the same settings. Drag the divider between the preview and the control panel to make the panel wider (double-click it to reset); the width is remembered. In any font dropdown, ↑ / ↓ steps to the previous / next font and applies it straight away.
 
 Settings and the three name lists persist in the browser's localStorage. "Reset settings to defaults" clears them and reloads the test data. Settings saved before the defaults changed stay as they were: click Reset once to pick up the new ones.
 
@@ -62,7 +62,7 @@ The panel at the top of the controls. **Export theme…** saves every setting ex
 | Names per row | exec 2, prod 3 | 1–4 supported for both. |
 | Banner every N rows | 12 / 12 | 0 disables. Each insert takes the next entry of the **every-N-rows queue** (banners or blocks, see below). Nothing is inserted after a section's last row. |
 | Header height | 64 | px at 1080p, like every size. Row height (88) and banner height (176) are in Look. |
-| Clock | in every header | `pinned`: the clock box stays at the lock line and headers slide underneath it (what the old channel did). Its colours come from the "Pinned clock style" header style. |
+| Clock | in every header (one at a time) | Only the header at the top shows the time (an outgoing header keeps it until it's fully pushed out); any other header on screen shows a blank box. `pinned`: the clock box stays at the lock line and headers slide underneath it (what the old channel did). Its colours come from the "Pinned clock style" header style. |
 | Exec / Producers header style | Blue | Header styles are presets (see Headers). |
 | Opening header | off | An extra first header above the Exec header, with its own text and style: a date, the episode number. With the locked lead-in it shows at t = 0 until the Exec header pushes it out; combine it with Hold at start. |
 | Clock start | 10:02:07 | `H:MM:SS`; 24-hour input is fine, display is 12-hour. Advances with t, never the wall clock. |
@@ -88,6 +88,7 @@ Everything inserted between the names comes from a **library** (banners, header 
 - **Banner preset**: a name, text (`|` starts a new line; leave blank for image-only), a colour for line 1 and one for the other lines, box fill, bevel light and dark colours, optional text alignment / font / font size overrides, an optional image (contain / cover / stretch, drawn inside the bevel with the text on top), and a height multiplier (1 = the normal banner height).
 - **Header style**: box fill, bevel light/dark, title text colour, and the clock box's fill and text colour. Used by the section headers, the opening header, block headers and the pinned clock. Two come built in: Blue (time bar) and Grey (promo bar).
 - **Block**: an optional header (text + header style) followed by any number of banners: a single banner, a banner with a header on top, or one header with several banners under it. A block's header behaves exactly like a section header: it scrolls up, locks at the top while its banners scroll under it, and is pushed out by the next header. With **"Bring the section header back"** (on by default), when a block with a header lands in the middle of a section, that section's header follows it so the names below have their header again. This is the sequence in `refs/banners and headers/`. The built-in "Patreon promo" block is a grey header plus the Patreon banner.
+- **Sticky banners**: switch it on in a banner preset and that banner locks at the top like a header until the next header or sticky banner pushes it out; rows keep scrolling beneath it.
 - **Every-N-rows queue**: banners and/or blocks in the order they're inserted, repeats allowed. Each insert (every N rows, per section in Grid) takes the next entry, continuing across the section boundary.
 - **Fixed placements**: a banner or block at a specific spot, played once: at the start, under the Exec header, between the sections, under the Producers header, or at the end. Several in one spot play in list order (▲ ▼ reorder within a spot).
 - **Editing** is live: each editor has a preview drawn through the real renderer, and the main render updates as you type. Duplicate makes a copy to tweak.
@@ -107,7 +108,7 @@ One collapsible group per text role (Names, Channel tiles, Header title, Header 
 - **Padding** left/right and top/bottom: the gap between the text and the inside of the bevel.
 - **Line spacing** for multi-line text (tiles, banners, promo, wrapped names).
 - **2 lines for long text** (Names and Header title): a name that doesn't fit wraps onto a second line instead of shrinking. The box never changes size, so if two lines don't fit the row height they get a bit smaller (raise Row height for room). If one slightly-shrunk line would be bigger than two lines, the single line wins.
-- **Drop shadow**: solid (no blur), colour, opacity and X/Y offset. **Stroke**: solid outline, colour, width and opacity.
+- **Drop shadow** and **Stroke** each have an on/off switch (shadow on, stroke off by default); the values are what you get when it's on. Shadow: solid (no blur), colour, opacity (100%) and X/Y offset. Stroke: solid outline, colour, width (1) and opacity (100%). The table at the top of the panel has every text type's shadow and stroke switches in one place, with **all on / off**.
 
 Every string is drawn once into its own small image (shadow, stroke, fill) and cached. The cache is only memoisation, so a hit and a miss give identical pixels and `render(t)` stays pure.
 

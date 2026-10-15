@@ -424,6 +424,31 @@ pass('reference frames written to test/out');
   if (r.held && r.rampRises && r.reachesCruise && r.endExact && r.boundaryExact && r.changeSmooth && Math.abs(r.ratio - 0.7) < 1e-9 && r.subpixelDeterministic) pass('easing: hold, smooth ramp to cruise, smooth section speed change, exact totals; sub-pixel motion deterministic'); else fail('easing', JSON.stringify(r));
 }
 
+// 15. "by part" copies stay in sync with the real controls; shadow/stroke switches; sticky banners lock like headers
+{
+  const r = await page.evaluate(async () => {
+    const T = window.__tvguide;
+    const ids = [...document.querySelectorAll('[id]')].map((e) => e.id);
+    const copy = document.querySelector('#partsView [data-setting="colExecCellFill"]');
+    copy.value = '#123456'; copy.dispatchEvent(new Event('input', { bubbles: true }));
+    await T.rebuild();
+    const primaryFollows = document.querySelector('[data-setting="colExecCellFill"]:not([data-mirror])').value === '#123456' && T.state.config.colExecCellFill === '#123456';
+    const sw = document.querySelector('#textFxMatrix [data-setting="txStrokeOnTile"]'); sw.click(); await T.rebuild();
+    const strokeOn = T.state.config.txStrokeOnTile === true && !!T.state.skin.textStyles.tile.stroke && T.state.skin.textStyles.tile.stroke.alpha === 1;
+    sw.click(); await T.rebuild();
+    const strokeOff = !T.state.skin.textStyles.tile.stroke;
+    const p = T.bannerLib.presets.get('default-logo'); p.sticky = true; await T.persistBannerPreset(p);
+    T.setBannerQueue(['default-logo']); await T.rebuild();
+    const { layout, skin } = T.state, L = skin.gridRect.y;
+    const i = layout.headers.findIndex((h) => h.kind === 'banner'), h = layout.headers[i], next = layout.headers[i + 1];
+    const locked = T.headerPositions(layout, skin, (h.naturalY + next.naturalY) / 2)[i] === L;
+    const pushed = T.headerPositions(layout, skin, next.naturalY)[i] === L - h.height;
+    p.sticky = false; await T.persistBannerPreset(p); T.setBannerQueue(['default-logo', 'default-patreon']); await T.rebuild();
+    return { dupIds: ids.length - new Set(ids).size, primaryFollows, strokeOn, strokeOff, sticky: i >= 0, locked, pushed };
+  });
+  if (r.dupIds === 0 && r.primaryFollows && r.strokeOn && r.strokeOff && r.sticky && r.locked && r.pushed) pass('"by part" copies sync both ways, shadow/stroke switches, sticky banner locks then gets pushed out'); else fail('parts / switches / sticky', JSON.stringify(r));
+}
+
 fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify(results, null, 2));
 await browser.close();
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');

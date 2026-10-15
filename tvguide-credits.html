@@ -172,10 +172,36 @@
   table.look td { padding: 2px 4px; }
   table.look td:first-child { color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
   table.look input[type=color], input[type=color].c { width: 100%; height: 28px; padding: 2px 3px; }
+  table.look input[type=color] { min-width: 44px; }
+  /* overview strip at the top of the panel */
+  .panel-nav { position: sticky; top: -14px; z-index: 5; margin: -14px -14px 0; padding: 12px 14px 10px; background: rgba(12, 12, 18, 0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 8px; }
+  .segmented { display: inline-flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--well); }
+  .segmented button { border: 0; background: transparent; box-shadow: none; color: var(--text-2); padding: 5px 12px; border-radius: 9px; font-weight: 600; }
+  .segmented button[aria-pressed='true'] { background: var(--selected); color: var(--text); font-weight: 800; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09); }
+  .nav-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .nav-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 700; text-transform: lowercase;
+    background: color-mix(in oklab, var(--chip) 14%, #15151e); border: 1px solid color-mix(in oklab, var(--chip) 30%, transparent); color: color-mix(in oklab, var(--chip) 60%, white); box-shadow: none; }
+  .nav-chip::before { content: ''; width: 7px; height: 7px; border-radius: 2px; background: var(--chip); }
+  .nav-chip:hover { background: color-mix(in oklab, var(--chip) 24%, #15151e); border-color: color-mix(in oklab, var(--chip) 50%, transparent); }
+  .nav-chip.current { background: color-mix(in oklab, var(--chip) 32%, #15151e); color: #fff; }
+  /* "by tool" vs "by part": the panel shows one arrangement at a time; library sections show in both */
+  .controls > * { order: 2; }
+  .controls > h1, .controls > .panel-nav, .controls > .pinned-top { order: 0; }
+  #partsView { order: 1; display: flex; flex-direction: column; gap: 12px; }
+  body:not(.view-part) #partsView, body.view-part .controls > [data-view="tool"] { display: none !important; }
+  .part-jump { align-self: flex-start; }
   details.role { border-radius: var(--r-row); padding: 7px 10px; background: var(--sheen), var(--row); box-shadow: var(--edge); }
   details.role[open] { padding-bottom: 10px; }
   details.role summary { cursor: pointer; color: var(--text); font-weight: 700; }
   details.role .sub { color: var(--heading); font-size: 11px; font-weight: 700; text-transform: lowercase; margin: 8px 0 4px; }
+  details.role .sub-switch label { color: var(--text-2); font-size: 12px; text-transform: none; }
+  .fx-fields.off { opacity: .35; }
+  table.fx-matrix td { padding: 3px 6px; } table.fx-matrix th { padding: 2px 6px; }
+  /* switches (Stream Desk style) — checkboxes with class="switch" */
+  input[type=checkbox].switch { appearance: none; -webkit-appearance: none; flex: none; width: 36px; height: 21px; border-radius: 999px; background: #34343f; position: relative; cursor: pointer; transition: background 150ms; vertical-align: middle; }
+  input[type=checkbox].switch::before { content: ''; position: absolute; top: 3px; left: 3px; width: 15px; height: 15px; border-radius: 50%; background: var(--heading); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); transition: transform 150ms, background 150ms; }
+  input[type=checkbox].switch:checked { background: var(--tint, var(--blue)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+  input[type=checkbox].switch:checked::before { transform: translateX(15px); background: var(--text); }
 </style>
 <script src="lib/ui-font.js"></script>
 </head>
@@ -243,7 +269,18 @@
 <aside class="controls">
   <h1>TV Guide Credits Scroller <span class="hint">greybox v1</span></h1>
 
-  <fieldset style="--tint: #b57bff">
+  <nav class="panel-nav" id="panelNav">
+    <div class="row" style="justify-content:space-between">
+      <div class="segmented" role="group" aria-label="Organise the controls">
+        <button type="button" data-view="tool" title="Grouped by tool: all colours together, all text options together…">by tool</button>
+        <button type="button" data-view="part" title="Grouped by part of the screen: everything about the exec boxes together, the producer boxes, the headers…">by part</button>
+      </div>
+      <div class="row" style="gap:4px"><button type="button" class="sm" id="btnCollapseAll" title="Collapse every section: an overview">collapse all</button><button type="button" class="sm" id="btnExpandAll">expand all</button></div>
+    </div>
+    <div class="nav-chips" id="navChips"></div>
+  </nav>
+
+  <fieldset style="--tint: #b57bff" class="pinned-top">
     <legend>Themes &amp; defaults</legend>
     <div class="row">
       <button id="btnThemeExport" class="sm">Export theme…</button>
@@ -258,7 +295,7 @@
     <div class="hint">A theme is every setting except the patron name lists, as a <code>.json</code> file: send it to the editors and they import it to get the exact same look. Importing applies it straight away; "Save current as my defaults" makes this browser's Reset button come back to it.</div>
   </fieldset>
 
-  <fieldset style="--tint: #5b8cff">
+  <fieldset style="--tint: #5b8cff" data-view="tool">
     <legend>Timing</legend>
     <div class="grid3">
       <label><span>Duration</span><div class="row" style="flex-wrap:nowrap;gap:4px"><input type="number" data-setting="duration" min="1" step="1" style="flex:1 1 4em;min-width:4em"><select data-setting="durationUnit" style="flex:0 0 auto;width:auto"><option value="seconds">s</option><option value="frames">frames</option></select></div></label>
@@ -283,7 +320,7 @@
     <div class="hint">The scroll accelerates from standstill to full speed over the ease-in, and glides between the two section speeds over the speed change (centred on the moment the Producers header locks). Speeds are re-solved so the total still lands exactly on the last frame. Whole pixels keeps everything crisp but steps unevenly when the speed isn't a whole number of pixels per frame; sub-pixel blends rows between pixels for an even glide (locked headers and the clock stay crisp).</div>
   </fieldset>
 
-  <fieldset style="--tint: #3fd0d4">
+  <fieldset style="--tint: #3fd0d4" data-view="tool">
     <legend>Grid</legend>
     <div class="grid3">
       <label><span>Seed (episode #)</span><input type="number" data-setting="seed" step="1"></label>
@@ -365,6 +402,7 @@
         <label><span>Image fit</span><select id="bp-imageFit"><option value="contain">contain (letterbox)</option><option value="cover">cover (crop)</option><option value="stretch">stretch</option></select></label>
         <label><span>Height (× banner height)</span><input type="number" id="bp-heightScale" min="0.25" max="4" step="0.25"></label>
       </div>
+      <label class="inline"><input type="checkbox" class="switch" id="bp-sticky"><span>Sticky: locks at the top like a header until the next header or sticky banner pushes it out</span></label>
       <div class="row"><button id="bp-done" class="primary sm">Done</button><button id="bp-duplicate" class="sm">Duplicate</button><span style="flex:1"></span><button id="bp-delete" class="sm danger">Delete preset</button></div>
     </div>
     <div class="row"><b>Blocks</b><span style="flex:1"></span><button id="btnBlockNew" class="sm">New block</button></div>
@@ -384,7 +422,7 @@
     </div>
   </fieldset>
 
-  <fieldset style="--tint: #ff7eb6">
+  <fieldset style="--tint: #ff7eb6" data-view="tool">
     <legend>Look — bevels &amp; colours</legend>
     <div class="grid3">
       <label><span>Bevel size (px at 1080p)</span><input type="number" data-setting="bevelPx" min="0" max="24" step="1"></label>
@@ -438,7 +476,7 @@
     </div>
   </fieldset>
 
-  <fieldset style="--tint: #2fd1a6">
+  <fieldset style="--tint: #2fd1a6" data-view="tool">
     <legend>Text style — alignment, padding, shadow, stroke</legend>
     <div class="grid3">
       <label><span>Text rendering</span><select data-setting="textRender"><option value="smooth">smooth (anti-aliased)</option><option value="pixel">pixel — no anti-aliasing, blocky</option></select></label>
@@ -446,11 +484,12 @@
       <label><span>&nbsp;</span><button id="btnResetText" class="sm">Reset text styles</button></label>
     </div>
     <div class="hint">For the full crisp low-res look: set Output → Internal render to e.g. <code>640x480</code> and Upscale to <b>nearest</b>, then pick pixel text here. Everything is drawn at that small size and blown up with hard pixels on export.</div>
+    <div id="textFxMatrix"></div>
     <div id="textStyleRoles" style="display:flex;flex-direction:column;gap:4px"></div>
     <div class="hint">Padding is the gap between the text and the inside of the box's bevel (px at 1080p). "2 lines" lets long text wrap onto a second line instead of shrinking. The box never changes size, so if two lines don't fit the row height the text gets a bit smaller to fit (raise Row height in Look for room). Shadows and strokes are solid (no blur).</div>
   </fieldset>
 
-  <fieldset style="--tint: #ff9f45">
+  <fieldset style="--tint: #ff9f45" data-view="tool">
     <legend>Header clock &amp; promo panel</legend>
     <div class="grid2">
       <label><span>Clock box shows</span><select data-setting="clockContent"><option value="clock">the live clock</option><option value="text">custom text</option></select></label>
@@ -462,7 +501,7 @@
     <label><span>Promo panels (one per line; <code>|</code> starts a new line inside a panel)</span><textarea data-setting="promosText" rows="2"></textarea></label>
   </fieldset>
 
-  <fieldset style="--tint: #ff5d5d">
+  <fieldset style="--tint: #ff5d5d" data-view="tool">
     <legend>Output</legend>
     <div class="grid2">
       <label><span>Video window aspect</span><select data-setting="videoAspect"><option value="4:3">4:3 (podcast footage, 3328×2496)</option><option value="16:9">16:9</option><option value="3:2">3:2</option><option value="1:1">1:1</option></select></label>
@@ -526,6 +565,7 @@
     <button id="btnReset" class="danger">Reset settings to defaults</button>
     <span class="hint">Settings and name lists persist in this browser. Reset goes back to your saved defaults if you have any (Themes &amp; defaults, top of this panel).</span>
   </div>
+  <div id="partsView"></div>
 </aside>
 
 <script src="lib/mediabunny.min.js"></script>
@@ -638,7 +678,7 @@ for (const r of FONT_ROLES) Object.assign(DEFAULTS, { ['font' + r.key]: DEFAULT_
  * line = line spacing %, wrap = allow 2 lines (cells & header titles), shadow/stroke = solid, opacity %.
  */
 const TEXT_STYLE_DEFAULTS = {
-  cell:   { alignH: 'left',   alignV: 'middle', padX: 14, padY: 4, line: 100, wrap: true,  shadowX: 2, shadowY: 2 },
+  cell:   { alignH: 'left',   alignV: 'top',    padX: 12, padY: 4, line: 100, wrap: true,  shadowX: 2, shadowY: 2 },
   tile:   { alignH: 'center', alignV: 'middle', padX: 8,  padY: 4, line: 100, wrap: false, shadowX: 2, shadowY: 2 },
   header: { alignH: 'center', alignV: 'middle', padX: 14, padY: 2, line: 100, wrap: false, shadowX: 2, shadowY: 2 },
   clock:  { alignH: 'center', alignV: 'middle', padX: 8,  padY: 2, line: 100, wrap: false, shadowX: 2, shadowY: 2 },
@@ -646,14 +686,15 @@ const TEXT_STYLE_DEFAULTS = {
   promo:  { alignH: 'center', alignV: 'middle', padX: 14, padY: 8, line: 135, wrap: false, shadowX: 2, shadowY: 2 },
 };
 const TEXT_WRAP_ROLES = ['cell', 'header'];
-const TX_PROPS = ['AlignH', 'AlignV', 'PadX', 'PadY', 'Line', 'Wrap', 'ShadowColor', 'ShadowOpacity', 'ShadowX', 'ShadowY', 'StrokeColor', 'StrokeWidth', 'StrokeOpacity'];
+const TX_PROPS = ['AlignH', 'AlignV', 'PadX', 'PadY', 'Line', 'Wrap', 'ShadowOn', 'ShadowColor', 'ShadowOpacity', 'ShadowX', 'ShadowY', 'StrokeOn', 'StrokeColor', 'StrokeWidth', 'StrokeOpacity'];
 for (const r of FONT_ROLES) {
   const d = TEXT_STYLE_DEFAULTS[r.id];
   Object.assign(DEFAULTS, {
     ['txAlignH' + r.key]: d.alignH, ['txAlignV' + r.key]: d.alignV, ['txPadX' + r.key]: d.padX, ['txPadY' + r.key]: d.padY,
     ['txLine' + r.key]: d.line, ['txWrap' + r.key]: d.wrap,
-    ['txShadowColor' + r.key]: '#000000', ['txShadowOpacity' + r.key]: 85, ['txShadowX' + r.key]: d.shadowX, ['txShadowY' + r.key]: d.shadowY,
-    ['txStrokeColor' + r.key]: '#000000', ['txStrokeWidth' + r.key]: 0, ['txStrokeOpacity' + r.key]: 100,
+    // shadow and stroke each have an on/off switch; the values are what you get when it's on
+    ['txShadowOn' + r.key]: true, ['txShadowColor' + r.key]: '#000000', ['txShadowOpacity' + r.key]: 100, ['txShadowX' + r.key]: d.shadowX, ['txShadowY' + r.key]: d.shadowY,
+    ['txStrokeOn' + r.key]: false, ['txStrokeColor' + r.key]: '#000000', ['txStrokeWidth' + r.key]: 1, ['txStrokeOpacity' + r.key]: 100,
   });
 }
 
@@ -850,6 +891,7 @@ function newBannerPreset(overrides) {
     id: newBannerId(), name: 'New banner', text: 'BANNER TEXT', textColor: '#ffe94a', textColor2: null,
     fill: '#182080', light: '#6c7be0', dark: '#040826',
     alignH: '', font: '', fontSize: 100,     // '' = use the Banners text style / font role
+    sticky: false,                           // locks at the top like a header until the next header / sticky banner pushes it out
     imageDataUrl: null, imageName: null, imageFit: 'contain', heightScale: 1,
     ...overrides,
   };
@@ -967,7 +1009,7 @@ function newBlock(overrides) {
 const headerLib = createLibrary(HEADER_STORE, 'tvguide-credits.headerPresets.v1', newHeaderStyle);
 const blockLib = createLibrary(BLOCK_STORE, 'tvguide-credits.blocks.v1', newBlock);
 const DEFAULT_HEADER_STYLES = [
-  { id: 'default-header', name: 'Blue (time bar)' },
+  { id: 'default-header', name: 'Blue (time bar)', textColor: '#ffe94a' },   // yellow titles, like the reference time slots
   { id: 'default-header-grey', name: 'Grey (promo bar)', fill: '#77777a', light: '#c4c4c8', dark: '#2e2e33', textColor: '#ffe94a', clockFill: '#2b3aa8', clockColor: '#ffffff' },
 ];
 const DEFAULT_BLOCKS = [
@@ -1003,6 +1045,13 @@ async function libDelete(lib, id) {
 }
 /** Adds missing defaults. The blue default takes its colours from settings saved before header styles existed (colHeader*). */
 async function ensureDefaultHeaderStyles(onlyIfEmpty, legacy) {
+  // one-time update: the blue default's title went from white to yellow (only if it was still the old white)
+  const blue = headerLib.presets.get('default-header');
+  if (blue && !blue.titleYellowV1) {
+    if ((blue.textColor || '').toLowerCase() === '#ffffff') blue.textColor = '#ffe94a';
+    blue.titleYellowV1 = true;
+    await libPersist(headerLib, blue);
+  }
   if (!(onlyIfEmpty && headerLib.presets.size)) {
     for (const d of DEFAULT_HEADER_STYLES) {
       if (headerLib.presets.has(d.id)) continue;
@@ -1384,7 +1433,14 @@ function buildLayout(config, skin, ctx, blocks = {}) {
     if (block.header) addHeader('block', section, block.header.text, block.header.style, { blockId: block.id, styleId: block.header.styleId });
     for (const entry of block.banners) {
       const b = makeBannerRow(skin, ctx, entry, minScale);
-      rows.push({ type: 'banner', section, y, height: b.height, banner: b, presetId: b.preset.id, presetName: b.preset.name, blockId: block.id });
+      const p = b.preset;
+      if (p.sticky) {
+        // a sticky banner is part of the header stack: scrolls up, locks at the top, pushed out by the next header
+        headers.push({ kind: 'banner', section, naturalY: y, height: b.height, banner: b, presetId: p.id, presetName: p.name, blockId: block.id,
+          title: { text: p.text || p.name }, style: { name: p.name, fill: p.fill, light: p.light, dark: p.dark, textColor: p.textColor } });
+      } else {
+        rows.push({ type: 'banner', section, y, height: b.height, banner: b, presetId: p.id, presetName: p.name, blockId: block.id });
+      }
       y += b.height;
     }
     return block.banners.length;
@@ -1815,7 +1871,7 @@ function createGreyboxSkin(W, H, options = {}) {
     tile: { fill: col(`col${p}TileFill`, '#05083a'), light: col(`col${p}TileLight`, '#3a45a0'), dark: col(`col${p}TileDark`, '#02041c') }, tileText: col(`col${p}TileText`, '#ffe94a'),
   });
   const tiers = { exec: tierColors('Exec'), prod: tierColors('') };
-  const defaultHeaderStyle = { fill: '#3b48b3', light: '#8b97e6', dark: '#1a2270', textColor: '#ffffff', clockFill: '#3b48b3', clockColor: '#ffe94a' };
+  const defaultHeaderStyle = { fill: '#3b48b3', light: '#8b97e6', dark: '#1a2270', textColor: '#ffe94a', clockFill: '#3b48b3', clockColor: '#ffe94a' };
   const colors = {
     bgTop: col('colBgTop', '#2637a8'), bgBottom: col('colBgBottom', '#161f78'), grid: col('colGrid', '#0b1150'),
     tiers, cell: tiers.prod.cell, cellText: tiers.prod.cellText, tile: tiers.prod.tile, tileText: tiers.prod.tileText,
@@ -1842,8 +1898,8 @@ function createGreyboxSkin(W, H, options = {}) {
       padX: Math.max(0, sizeX(num(s.padX, d.padX))), padY: Math.max(0, sizeY(num(s.padY, d.padY))),
       lineSpacing: clamp(num(s.line, d.line), 50, 300) / 100,
       wrap: TEXT_WRAP_ROLES.includes(r.id) && !!s.wrap,
-      shadow: shadowA > 0 && (sdx || sdy) ? { color: hex(s.shadowColor), alpha: shadowA, dx: sdx, dy: sdy } : null,
-      stroke: strokeA > 0 && sw > 0 ? { color: hex(s.strokeColor), alpha: strokeA, w: sw } : null,
+      shadow: s.shadowOn !== false && shadowA > 0 && (sdx || sdy) ? { color: hex(s.shadowColor), alpha: shadowA, dx: sdx, dy: sdy } : null,
+      stroke: !!s.strokeOn && strokeA > 0 && sw > 0 ? { color: hex(s.strokeColor), alpha: strokeA, w: sw } : null,
     }];
   }));
   const nudge = px(1);   // the 'middle' baseline sits a touch high for caps; same nudge the greybox always had
@@ -2107,6 +2163,14 @@ function drawGrid(ctx, t, reveal) {
     if (y + h.height <= g.y || y >= g.y + g.h + 1) return;
     items.push({ kind: 1, header: h, y, moving: !locked });
   });
+  // Only one clock at a time: the header occupying the lock line shows it (an outgoing header keeps it until it's fully
+  // pushed out); before any header reaches the top (scroll-in), the topmost one does. Every other header's box is blank.
+  let clockOwner = layout.headers.findIndex((h, i) => h.kind !== 'banner' && ys[i] <= L && L < ys[i] + h.height);
+  if (clockOwner < 0) {
+    let best = Infinity;
+    layout.headers.forEach((h, i) => { if (h.kind !== 'banner' && ys[i] >= L && ys[i] < best && ys[i] < g.y + g.h) { best = ys[i]; clockOwner = i; } });
+  }
+  for (const it of items) if (it.kind === 1) it.showsClock = layout.headers[clockOwner] === it.header;
   if (skin.clockMode === 'pinned' && layout.headers.length) {
     const riding = ys[0] > L;   // scroll-in lead-in: the clock rides with the first header until it locks
     items.push({ kind: 2, y: riding ? (sub ? place(ys[0]) : Math.round(ys[0])) : L, moving: riding });
@@ -2119,7 +2183,8 @@ function drawGrid(ctx, t, reveal) {
   }
   const draw = (c, it) => {
     if (it.kind === 0) drawRow(c, skin, it.row, it.y, it.parts);
-    else if (it.kind === 1) skin.drawHeader(c, { x: g.x, y: it.y, w: g.w, h: it.header.height }, it.header, clockText, { tier: it.header.section, parts: it.parts });
+    else if (it.kind === 1 && it.header.kind === 'banner') skin.drawBanner(c, { x: g.x, y: it.y, w: g.w, h: it.header.height }, it.header.banner, { tier: it.header.section, parts: it.parts });
+    else if (it.kind === 1) skin.drawHeader(c, { x: g.x, y: it.y, w: g.w, h: it.header.height }, it.header, it.showsClock ? clockText : '', { tier: it.header.section, parts: it.parts });
     else skin.drawClockBox(c, { x: g.x, y: it.y, w: g.w, h: skin.headerHeight }, clockText, state.clockStyle, { parts: it.parts });
   };
   ctx.save();
@@ -2535,7 +2600,29 @@ async function exportPNGSequence(seconds) {
 // 10. UI WIRING — settings ↔ inputs, rebuild pipeline, readouts, CSV import, keys
 // ============================================================================
 
-const settingEls = () => Array.from(document.querySelectorAll('[data-setting]'));
+/** The primary input of every setting. Live copies elsewhere (quick table, "by part" view) carry data-mirror and are kept in sync. */
+const settingEls = () => Array.from(document.querySelectorAll('[data-setting]:not([data-mirror])'));
+const primaryInput = (key) => document.querySelector(`[data-setting="${key}"]:not([data-mirror])`);
+function copyInputValue(from, to) { if (to.type === 'checkbox') to.checked = from.checked; else to.value = from.value; }
+/** Set a setting from code: the primary and all its copies. */
+function setSettingValue(key, value) {
+  for (const i of document.querySelectorAll(`[data-setting="${key}"]`)) { if (i.type === 'checkbox') i.checked = !!value; else i.value = value; }
+  syncFxFields();
+}
+/** A control was edited: make the primary and every copy agree with it. */
+function mirrorSetting(src) {
+  const key = src.dataset.setting;
+  for (const i of document.querySelectorAll(`[data-setting="${key}"]`)) if (i !== src) copyInputValue(src, i);
+}
+/** Bring every copy in line with its primary (after code changed primaries directly, or a rebuild). */
+function refreshMirrors() {
+  for (const m of document.querySelectorAll('[data-setting][data-mirror]')) { const p = primaryInput(m.dataset.setting); if (p) copyInputValue(p, m); }
+  syncFxFields();
+}
+/** Shadow / stroke value fields dim while their switch is off. */
+function syncFxFields() {
+  for (const f of document.querySelectorAll('.fx-fields')) { const sw = primaryInput(f.dataset.fx); f.classList.toggle('off', !!sw && !sw.checked); }
+}
 
 function readSettingsFromUI() {
   const cfg = { ...DEFAULTS };
@@ -2585,9 +2672,10 @@ function writeSettingsToUI(cfg) {
   }
   for (const sel of document.querySelectorAll('.res-select')) {
     const v = cfg[sel.dataset.setting];
-    if (v && v !== 'custom' && ![...sel.options].some((o) => o.value === v)) { sel.value = 'custom'; document.querySelector(`[data-setting="${sel.dataset.custom}"]`).value = v; }
+    if (v && v !== 'custom' && ![...sel.options].some((o) => o.value === v)) { sel.value = 'custom'; primaryInput(`${sel.dataset.custom}`).value = v; }
   }
   syncResCustomFields();
+  refreshMirrors();
   state.bannerQueue = Array.isArray(cfg.bannerQueue) ? cfg.bannerQueue.slice() : DEFAULTS.bannerQueue.slice();
   state.fixedBlocks = Array.isArray(cfg.fixedBlocks) ? cfg.fixedBlocks.map((f) => ({ ...f })) : [];
   renderBannerQueue(); renderFixedList();
@@ -2595,7 +2683,10 @@ function writeSettingsToUI(cfg) {
 
 /** The W×H box under a resolution menu only shows while the menu is on "custom…". */
 function syncResCustomFields() {
-  for (const sel of document.querySelectorAll('.res-select')) document.querySelector(`[data-setting="${sel.dataset.custom}"]`).hidden = sel.value !== 'custom';
+  for (const sel of document.querySelectorAll('.res-select')) {
+    const field = sel.parentElement.querySelector(`[data-setting="${sel.dataset.custom}"]`);
+    if (field) field.hidden = sel.value !== 'custom';
+  }
 }
 
 // ---- themes: every setting except the patron lists, as JSON; optional per-browser defaults ----
@@ -2676,6 +2767,15 @@ function loadSettings() {
   for (const part of ['Cell', 'Tile']) for (const p of ['Fill', 'Light', 'Dark', 'Text']) {
     if (raw[`colExec${part}${p}`] === undefined && raw[`col${part}${p}`] !== undefined) raw[`colExec${part}${p}`] = raw[`col${part}${p}`];
   }
+  // Before the shadow/stroke switches, "off" meant opacity 0 / width 0: turn those into switches.
+  for (const r of FONT_ROLES) {
+    const k = r.key;
+    if (raw['txStrokeOn' + k] === undefined && raw['txStrokeWidth' + k] !== undefined) {
+      raw['txStrokeOn' + k] = +raw['txStrokeWidth' + k] > 0;
+      if (!(+raw['txStrokeWidth' + k] > 0)) raw['txStrokeWidth' + k] = 1;
+    }
+    if (raw['txShadowOn' + k] === undefined && raw['txShadowOpacity' + k] !== undefined) raw['txShadowOn' + k] = +raw['txShadowOpacity' + k] > 0;
+  }
   return { ...DEFAULTS, ...raw };
 }
 
@@ -2686,6 +2786,7 @@ function resolveTextStyles(cfg) {
     const g = (p) => cfg['tx' + p + r.key];
     out[r.id] = {
       alignH: g('AlignH'), alignV: g('AlignV'), padX: g('PadX'), padY: g('PadY'), line: g('Line'), wrap: g('Wrap'),
+      shadowOn: g('ShadowOn'), strokeOn: g('StrokeOn'),
       shadowColor: g('ShadowColor'), shadowOpacity: g('ShadowOpacity'), shadowX: g('ShadowX'), shadowY: g('ShadowY'),
       strokeColor: g('StrokeColor'), strokeWidth: g('StrokeWidth'), strokeOpacity: g('StrokeOpacity'),
     };
@@ -2779,6 +2880,7 @@ async function rebuild() {
   updateStats();
   updateFontPxHints();
   renderTimeline();
+  refreshMirrors();
   updateNameCounts();
   setTime(preview.t);
   if (bannerLib.editingId) renderBannerPreview();
@@ -2947,8 +3049,8 @@ function updateCSVSummary() {
 
 function applyCSV() {
   const { exec, prod } = csvSelection();
-  document.querySelector('[data-setting="execNamesText"]').value = exec.join('\n');
-  document.querySelector('[data-setting="prodNamesText"]').value = prod.join('\n');
+  primaryInput('execNamesText').value = exec.join('\n');
+  primaryInput('prodNamesText').value = prod.join('\n');
   scheduleRebuild();
 }
 
@@ -3051,7 +3153,7 @@ function addToBannerQueue(id) { setBannerQueue([...(state.bannerQueue || []), id
 function removeFromBannerQueue(i) { const q = state.bannerQueue.slice(); q.splice(i, 1); setBannerQueue(q); }
 function moveInBannerQueue(i, d) { const q = state.bannerQueue.slice(); const j = i + d; if (j < 0 || j >= q.length) return; [q[i], q[j]] = [q[j], q[i]]; setBannerQueue(q); }
 
-const BP_FIELDS = ['name', 'text', 'textColor', 'textColor2', 'fill', 'light', 'dark', 'alignH', 'font', 'fontSize', 'imageFit', 'heightScale'];
+const BP_FIELDS = ['name', 'text', 'textColor', 'textColor2', 'fill', 'light', 'dark', 'alignH', 'font', 'fontSize', 'imageFit', 'heightScale', 'sticky'];
 let bannerSaveTimer = 0;
 
 function openBannerEditor(id) {
@@ -3062,7 +3164,10 @@ function openBannerEditor(id) {
   fontSel.add(new Option('(Banners font)', ''));
   for (const f of fontsSorted()) if (f.face) fontSel.add(new Option(f.id, f.id));
   if (p.font && !fontLib.fonts.has(p.font)) fontSel.add(new Option(`⚠ ${p.font} (not loaded)`, p.font));
-  for (const k of BP_FIELDS) el('bp-' + k).value = (k === 'textColor2' ? p.textColor2 || p.textColor : p[k]) ?? '';
+  for (const k of BP_FIELDS) {
+    if (k === 'sticky') { el('bp-sticky').checked = !!p.sticky; continue; }
+    el('bp-' + k).value = (k === 'textColor2' ? p.textColor2 || p.textColor : p[k]) ?? '';
+  }
   el('bp-imageInfo').textContent = p.imageDataUrl ? `${p.imageName || 'image'} · ${Math.round((p.imageDataUrl.length * 0.75) / 1024)} KB` : 'no image';
   el('bannerEditor').hidden = false;
   renderBannerPreview();
@@ -3073,6 +3178,7 @@ function closeBannerEditor() { bannerLib.editingId = null; el('bannerEditor').hi
 function bannerEditorChanged() {
   const p = bannerLib.presets.get(bannerLib.editingId); if (!p) return;
   for (const k of BP_FIELDS) {
+    if (k === 'sticky') { p.sticky = el('bp-sticky').checked; continue; }
     const v = el('bp-' + k).value;
     p[k] = k === 'heightScale' ? clamp(parseFloat(v) || 1, 0.25, 4) : k === 'fontSize' ? clamp(parseFloat(v) || 100, 25, 400) : v;
   }
@@ -3324,48 +3430,60 @@ function buildTextStyleUI() {
         <label><span>Padding top/bottom</span><input type="number" data-setting="txPadY${k}" min="0" max="200" step="1"></label>
         ${TEXT_WRAP_ROLES.includes(r.id) ? `<label class="inline" style="align-self:end"><input type="checkbox" data-setting="txWrap${k}"><span>2 lines for long text</span></label>` : '<span></span>'}
       </div>
-      <div class="sub">Drop shadow (solid)</div>
-      <div class="grid4">
+      <div class="sub sub-switch"><label class="inline"><input type="checkbox" class="switch" data-setting="txShadowOn${k}"><span>Drop shadow (solid)</span></label></div>
+      <div class="grid4 fx-fields" data-fx="txShadowOn${k}">
         <label><span>Colour</span><input type="color" class="c" data-setting="txShadowColor${k}"></label>
         <label><span>Opacity %</span><input type="number" data-setting="txShadowOpacity${k}" min="0" max="100" step="5"></label>
         <label><span>Offset X</span><input type="number" data-setting="txShadowX${k}" min="-40" max="40" step="1"></label>
         <label><span>Offset Y</span><input type="number" data-setting="txShadowY${k}" min="-40" max="40" step="1"></label>
       </div>
-      <div class="sub">Stroke (outline)</div>
-      <div class="grid4">
+      <div class="sub sub-switch"><label class="inline"><input type="checkbox" class="switch" data-setting="txStrokeOn${k}"><span>Stroke (outline)</span></label></div>
+      <div class="grid4 fx-fields" data-fx="txStrokeOn${k}">
         <label><span>Colour</span><input type="color" class="c" data-setting="txStrokeColor${k}"></label>
-        <label><span>Width</span><input type="number" data-setting="txStrokeWidth${k}" min="0" max="20" step="0.5"></label>
+        <label><span>Width</span><input type="number" data-setting="txStrokeWidth${k}" min="0.5" max="20" step="0.5"></label>
         <label><span>Opacity %</span><input type="number" data-setting="txStrokeOpacity${k}" min="0" max="100" step="5"></label>
       </div>
     </details>`;
   }).join('');
+  // quick table: every text type's shadow & stroke switches in one place (live copies of the switches above)
+  el('textFxMatrix').innerHTML = `<table class="look fx-matrix"><thead><tr><th></th><th>Shadow</th><th>Stroke</th></tr></thead><tbody>${
+    FONT_ROLES.map((r) => `<tr><td>${esc(r.label)}</td><td><input type="checkbox" class="switch" data-setting="txShadowOn${r.key}" data-mirror="1"></td><td><input type="checkbox" class="switch" data-setting="txStrokeOn${r.key}" data-mirror="1"></td></tr>`).join('')
+  }<tr><td></td><td><button class="sm" data-fx-all="Shadow:1">all on</button> <button class="sm" data-fx-all="Shadow:0">off</button></td><td><button class="sm" data-fx-all="Stroke:1">all on</button> <button class="sm" data-fx-all="Stroke:0">off</button></td></tr></tbody></table>`;
+  el('textFxMatrix').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fx-all]'); if (!b) return;
+    const [what, on] = b.dataset.fxAll.split(':');
+    for (const r of FONT_ROLES) setSettingValue(`tx${what}On${r.key}`, on === '1');
+    scheduleRebuild();
+  });
 }
 function resetTextStyles() {
-  for (const k of TEXT_KEYS) { const input = document.querySelector(`[data-setting="${k}"]`); if (!input) continue; if (input.type === 'checkbox') input.checked = DEFAULTS[k]; else input.value = DEFAULTS[k]; }
+  for (const k of TEXT_KEYS) { const input = primaryInput(`${k}`); if (!input) continue; if (input.type === 'checkbox') input.checked = DEFAULTS[k]; else input.value = DEFAULTS[k]; }
   scheduleRebuild();
 }
 
 function resetLook() {
-  for (const k of LOOK_KEYS) { const input = document.querySelector(`[data-setting="${k}"]`); if (input) input.value = DEFAULTS[k]; }
+  for (const k of LOOK_KEYS) { const input = primaryInput(`${k}`); if (input) input.value = DEFAULTS[k]; }
   scheduleRebuild();
 }
 
 // ---- fonts ----
 
-const fontSelect = (r) => document.querySelector(`[data-setting="font${r.key}"]`);
+const fontSelect = (r) => primaryInput(`font${r.key}`);
+const fontSelectsAll = (r) => Array.from(document.querySelectorAll(`[data-setting="font${r.key}"]`));
 function fontsSorted() { return Array.from(fontLib.fonts.values()).sort((a, b) => a.id.localeCompare(b.id)); }
 
 /** Rebuild every role's font dropdown from the library. `values` = settings to select (default: keep what's selected). */
 function renderFontSelects(values) {
   const fonts = fontsSorted();
   for (const r of FONT_ROLES) {
-    const sel = fontSelect(r);
-    const v = values ? (values['font' + r.key] || '') : sel.value;
-    sel.innerHTML = '';
-    sel.add(new Option('Default (Arial Narrow)', ''));
-    for (const f of fonts) sel.add(new Option(f.error ? `${f.id} (failed to load)` : f.id, f.id));
-    if (v && !fontLib.fonts.has(v)) sel.add(new Option(`⚠ ${v} (not loaded — rescan or add it)`, v));
-    sel.value = v;
+    const v = values ? (values['font' + r.key] || '') : fontSelect(r).value;
+    for (const sel of fontSelectsAll(r)) {
+      sel.innerHTML = '';
+      sel.add(new Option('Default (Arial Narrow)', ''));
+      for (const f of fonts) sel.add(new Option(f.error ? `${f.id} (failed to load)` : f.id, f.id));
+      if (v && !fontLib.fonts.has(v)) sel.add(new Option(`⚠ ${v} (not loaded — rescan or add it)`, v));
+      sel.value = v;
+    }
   }
 }
 
@@ -3416,7 +3534,7 @@ function applyNamesFontEverywhere() {
   const src = FONT_ROLES[0];
   for (const r of FONT_ROLES.slice(1)) {
     for (const p of ['font', 'fontSize', 'fontPx', 'fontWidth', 'fontBold']) {
-      const from = document.querySelector(`[data-setting="${p}${src.key}"]`), to = document.querySelector(`[data-setting="${p}${r.key}"]`);
+      const from = primaryInput(`${p}${src.key}`), to = primaryInput(`${p}${r.key}`);
       if (to.type === 'checkbox') to.checked = from.checked; else to.value = from.value;
     }
   }
@@ -3424,7 +3542,7 @@ function applyNamesFontEverywhere() {
 }
 /** One click for pixel fonts: no horizontal squeeze, no fake bold, hard-edged text, never shrink (truncate or wrap instead). */
 function pixelFontSetup() {
-  const set = (k, v) => { const i = document.querySelector(`[data-setting="${k}"]`); if (i.type === 'checkbox') i.checked = v; else i.value = v; };
+  const set = (k, v) => { const i = primaryInput(`${k}`); if (i.type === 'checkbox') i.checked = v; else i.value = v; };
   for (const r of FONT_ROLES) { set('fontWidth' + r.key, 100); set('fontBold' + r.key, false); }
   set('textRender', 'pixel'); set('textPixelScale', 1); set('minFontScale', 1);
   scheduleRebuild();
@@ -3433,11 +3551,11 @@ function pixelFontSetup() {
 /** Faint automatic size in each Exact px box, so you can see what Size % works out to. */
 function updateFontPxHints() {
   const auto = state.skin && state.skin.fonts.auto; if (!auto) return;
-  for (const r of FONT_ROLES) { const i = document.querySelector(`[data-setting="fontPx${r.key}"]`); if (i) i.placeholder = auto[r.id]; }
+  for (const r of FONT_ROLES) { const i = primaryInput(`fontPx${r.key}`); if (i) i.placeholder = auto[r.id]; }
 }
 
 function resetFonts() {
-  for (const k of FONT_KEYS) { const input = document.querySelector(`[data-setting="${k}"]`); if (!input) continue; if (input.type === 'checkbox') input.checked = DEFAULTS[k]; else input.value = k.startsWith('fontPx') && !DEFAULTS[k] ? '' : DEFAULTS[k]; }
+  for (const k of FONT_KEYS) { const input = primaryInput(`${k}`); if (!input) continue; if (input.type === 'checkbox') input.checked = DEFAULTS[k]; else input.value = k.startsWith('fontPx') && !DEFAULTS[k] ? '' : DEFAULTS[k]; }
   scheduleRebuild();
 }
 
@@ -3445,9 +3563,9 @@ function resetFonts() {
 
 function loadTestData() {
   const d = generateTestData();
-  document.querySelector('[data-setting="execNamesText"]').value = d.exec.join('\n');
-  document.querySelector('[data-setting="prodNamesText"]').value = d.prod.join('\n');
-  document.querySelector('[data-setting="channelNamesText"]').value = d.channels.join('\n');
+  primaryInput('execNamesText').value = d.exec.join('\n');
+  primaryInput('prodNamesText').value = d.prod.join('\n');
+  primaryInput('channelNamesText').value = d.channels.join('\n');
   scheduleRebuild();
 }
 
@@ -3457,13 +3575,9 @@ function sectionKey(fs) { return fs.querySelector(':scope > legend').textContent
 function bindCollapsibleSections() {
   let collapsed = [];
   try { collapsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]'); } catch (e) { /* none */ }
+  for (const fs of document.querySelectorAll('.controls fieldset')) if (collapsed.includes(sectionKey(fs))) fs.classList.add('collapsed');
   for (const fs of document.querySelectorAll('.controls > fieldset')) {
-    if (collapsed.includes(sectionKey(fs))) fs.classList.add('collapsed');
-    fs.querySelector(':scope > legend').addEventListener('click', () => {
-      fs.classList.toggle('collapsed');
-      const keys = [...document.querySelectorAll('.controls > fieldset.collapsed')].map(sectionKey);
-      try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(keys)); } catch (e) { /* fine */ }
-    });
+    fs.querySelector(':scope > legend').addEventListener('click', () => { fs.classList.toggle('collapsed'); saveCollapsed(); });
   }
 }
 /** Open the section containing el (if collapsed), scroll it into view and flash it. */
@@ -3471,6 +3585,133 @@ function revealInPanel(node) {
   const fs = node.closest('fieldset'); if (fs) fs.classList.remove('collapsed');
   node.scrollIntoView({ behavior: 'smooth', block: 'center' });
   node.classList.remove('flash'); void node.offsetWidth; node.classList.add('flash');
+}
+
+// ---- panel overview strip (jump to a section) and "by tool" / "by part" arrangement ----
+const VIEW_KEY = 'tvguide-credits.panelView';
+const visibleSections = () => [...document.querySelectorAll('.controls fieldset')].filter((fs) => fs.offsetParent !== null && fs.querySelector(':scope > legend'))
+  .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+function renderNavChips() {
+  const chips = el('navChips'); chips.innerHTML = '';
+  for (const fs of visibleSections()) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'nav-chip';
+    b.style.setProperty('--chip', getComputedStyle(fs).getPropertyValue('--tint').trim() || '#5b8cff');
+    b.textContent = sectionKey(fs).replace(/ —.*$/, '');
+    b.addEventListener('click', () => { fs.classList.remove('collapsed'); fs.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    b._section = fs;
+    chips.appendChild(b);
+  }
+  highlightNavChip();
+}
+/** The chip of the section at the top of the panel lights up as you scroll. */
+function highlightNavChip() {
+  const panel = document.querySelector('.controls'), navH = el('panelNav').getBoundingClientRect().bottom;
+  let current = null;
+  for (const c of el('navChips').children) { if (c._section.getBoundingClientRect().top <= navH + 24) current = c; }
+  for (const c of el('navChips').children) c.classList.toggle('current', c === current);
+}
+function setPanelView(view) {
+  document.body.classList.toggle('view-part', view === 'part');
+  for (const b of document.querySelectorAll('#panelNav [data-view]')) b.setAttribute('aria-pressed', String(b.dataset.view === view));
+  try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* fine */ }
+  renderNavChips();
+}
+function bindPanelNav() {
+  for (const b of document.querySelectorAll('#panelNav [data-view]')) b.addEventListener('click', () => setPanelView(b.dataset.view));
+  el('btnCollapseAll').addEventListener('click', () => { for (const fs of visibleSections()) if (!fs.classList.contains('pinned-top')) fs.classList.add('collapsed'); saveCollapsed(); });
+  el('btnExpandAll').addEventListener('click', () => { for (const fs of document.querySelectorAll('.controls fieldset')) fs.classList.remove('collapsed'); saveCollapsed(); });
+  document.querySelector('.controls').addEventListener('scroll', highlightNavChip, { passive: true });
+  let view = 'tool';
+  try { view = localStorage.getItem(VIEW_KEY) || 'tool'; } catch (e) { /* default */ }
+  setPanelView(view);
+}
+function saveCollapsed() {
+  const keys = [...document.querySelectorAll('.controls fieldset.collapsed')].map(sectionKey);
+  try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(keys)); } catch (e) { /* fine */ }
+}
+
+/**
+ * "By part": the same settings regrouped by what they affect. Every control here is a live copy of the real one
+ * (data-mirror; kept in sync both ways), so there's still exactly one value per setting.
+ */
+const PARTS = [
+  { title: 'Executive Producers', tint: '#b57bff', keys: ['execTitle', 'execNamesPerRow', 'execBannerEvery', 'execHeaderStyle'],
+    colors: [['Name cells', 'colExecCell'], ['Channel tiles', 'colExecTile']], note: 'Name text styling is shared by both tiers (see "Names text").' },
+  { title: 'Podcast Producers', tint: '#3fd0d4', keys: ['prodTitle', 'prodNamesPerRow', 'prodBannerEvery', 'prodHeaderStyle'],
+    colors: [['Name cells', 'colCell'], ['Channel tiles', 'colTile']] },
+  { title: 'Names text', tint: '#4fd68a', fonts: ['Cell'], roles: ['Cell'], keys: ['minFontScale'] },
+  { title: 'Channel tiles', tint: '#ff7eb6', keys: ['channelStart', 'seed'], fonts: ['Tile'], roles: ['Tile'] },
+  { title: 'Header bars & clock', tint: '#7c83ff', keys: ['headerHeightPx', 'clockMode', 'clockStyle', 'clockContent', 'clockCustomText', 'clockStart', 'openingHeader', 'openingHeaderText', 'openingHeaderStyle'],
+    fonts: ['Header', 'Clock'], roles: ['Header', 'Clock'], jump: ['Headers', 'Header styles (colours) and the opening header live in Headers'] },
+  { title: 'Banners', tint: '#ffd24a', keys: ['bannerHeightPx'], fonts: ['Banner'], roles: ['Banner'], jump: ['Banners &', 'Banner presets, blocks and the queue live in Banners & blocks'] },
+  { title: 'Promo panel', tint: '#ff9f45', keys: ['promosText', 'promoIntervalSeconds', 'colPromoText', 'colPromoAccent'], fonts: ['Promo'], roles: ['Promo'] },
+  { title: 'Boxes & background', tint: '#2fd1a6', keys: ['bevelPx', 'gapPx', 'rowHeightPx', 'colGrid', 'colBgTop', 'colBgBottom', 'textRender', 'textPixelScale'] },
+  { title: 'Motion & timing', tint: '#5b8cff', keys: ['duration', 'fps', 'speedRatio', 'endBehavior', 'leadIn', 'startHoldFrames', 'loadInFrames', 'easeInFrames', 'easeInCurve', 'sectionEaseFrames', 'sectionEaseCurve', 'scrollMotion'] },
+  { title: 'Output', tint: '#ff5d5d', keys: ['outputRes', 'internalRes', 'upscaleMode', 'pixelSnap', 'videoAspect', 'exportRegion', 'topArea', 'videoWindowStyle', 'videoFill', 'videoFillCustom', 'bitrateMbps', 'designScale'] },
+];
+/** A copy of a control subtree: every setting inside becomes a mirror, ids are dropped (they must stay unique). */
+function mirrorClone(node) {
+  const c = node.cloneNode(true);
+  for (const n of [c, ...c.querySelectorAll('*')]) {
+    n.removeAttribute('id');
+    if (n.dataset && n.dataset.setting) n.dataset.mirror = '1';
+  }
+  return c;
+}
+function cloneSettingControl(key) {
+  const input = primaryInput(key); if (!input) return null;
+  const label = input.closest('label');
+  if (label && !label.closest('table')) return mirrorClone(label);
+  // a colour in one of the Look tables: label it "<row> · <column>"
+  const td = input.closest('td'), table = input.closest('table');
+  const rowLabel = td ? td.parentElement.cells[0].textContent.trim() : key;
+  const colLabel = td && table.tHead ? table.tHead.rows[0].cells[td.cellIndex].textContent.trim() : '';
+  const l = document.createElement('label');
+  l.innerHTML = `<span>${esc(rowLabel)}${colLabel ? ' · ' + esc(colLabel.toLowerCase()) : ''}</span>`;
+  l.appendChild(mirrorClone(input));
+  return l;
+}
+function buildPartsView() {
+  const host = el('partsView'); host.innerHTML = '';
+  for (const part of PARTS) {
+    const fs = document.createElement('fieldset');
+    fs.dataset.view = 'part'; fs.style.setProperty('--tint', part.tint);
+    fs.innerHTML = `<legend>${esc(part.title)}</legend>`;
+    if (part.keys && part.keys.length) {
+      const grid = document.createElement('div'); grid.className = 'grid2';
+      for (const k of part.keys) { const c = cloneSettingControl(k); if (c) grid.appendChild(c); }
+      fs.appendChild(grid);
+    }
+    if (part.colors) {
+      const t = document.createElement('table'); t.className = 'look';
+      t.innerHTML = '<thead><tr><th></th><th>Fill</th><th>Light edge</th><th>Dark edge</th><th>Text</th></tr></thead><tbody></tbody>';
+      for (const [label, prefix] of part.colors) {
+        const tr = document.createElement('tr'); tr.innerHTML = `<td>${esc(label)}</td>`;
+        for (const suffix of ['Fill', 'Light', 'Dark', 'Text']) { const td = document.createElement('td'); const i = primaryInput(prefix + suffix); if (i) td.appendChild(mirrorClone(i)); tr.appendChild(td); }
+        t.tBodies[0].appendChild(tr);
+      }
+      fs.appendChild(t);
+    }
+    if (part.fonts) {
+      const t = document.createElement('table'); t.className = 'look';
+      t.innerHTML = '<thead><tr><th></th><th>Font</th><th>Size %</th><th>Exact px</th><th>Width %</th><th>Bold</th></tr></thead><tbody></tbody>';
+      for (const key of part.fonts) { const tr = primaryInput('font' + key).closest('tr'); t.tBodies[0].appendChild(mirrorClone(tr)); }
+      fs.appendChild(t);
+    }
+    for (const key of part.roles || []) {
+      const d = primaryInput('txAlignH' + key).closest('details');
+      const c = mirrorClone(d); c.open = false; fs.appendChild(c);
+    }
+    if (part.note) { const n = document.createElement('div'); n.className = 'hint'; n.textContent = part.note; fs.appendChild(n); }
+    if (part.jump) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'sm part-jump'; b.textContent = `${part.jump[1]} →`;
+      b.addEventListener('click', () => { const target = [...document.querySelectorAll('.controls > fieldset')].find((f) => sectionKey(f).startsWith(part.jump[0].replace('&', '&'))); if (target) { target.classList.remove('collapsed'); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+      fs.appendChild(b);
+    }
+    host.appendChild(fs);
+  }
+  // collapsing works the same in both arrangements
+  for (const fs of host.querySelectorAll('fieldset')) fs.querySelector(':scope > legend').addEventListener('click', () => { fs.classList.toggle('collapsed'); saveCollapsed(); });
 }
 
 // ---- timeline: hold / ease / exec / speed change / producers, banner flags, draggable split ----
@@ -3494,6 +3735,7 @@ function timelineMarkers() {
     marks.push({ kind: 'banner', t: timeAtScroll(timing, sTarget), color: r.banner.preset.fill || '#182080', label: r.presetName, presetId: r.presetId, blockId: r.blockId });
   }
   for (const h of layout.headers) {
+    if (h.kind === 'banner') { marks.push({ kind: 'banner', t: timeAtScroll(timing, h.naturalY), color: h.style.fill || '#182080', label: `${h.presetName} (sticky)`, presetId: h.presetId, blockId: h.blockId }); continue; }
     if (h.kind !== 'block' && h.kind !== 'opening') continue;
     marks.push({ kind: 'block', t: timeAtScroll(timing, h.naturalY), color: h.style.fill || '#3b48b3', label: h.kind === 'opening' ? `Opening header: ${h.title.text}` : `Block header: ${h.title.text}`, blockId: h.blockId || null, opening: h.kind === 'opening' });
   }
@@ -3553,7 +3795,7 @@ function jumpToMarker(m) {
   pausePreview(); setTime(m.t);
   if (m.kind === 'banner' && bannerLib.presets.has(m.presetId)) { openBannerEditor(m.presetId); revealInPanel(el('bannerEditor')); }
   else if (m.blockId && blockLib.presets.has(m.blockId)) { openBlockEditor(m.blockId); revealInPanel(el('blockEditor')); }
-  else if (m.opening) revealInPanel(document.querySelector('[data-setting="openingHeaderText"]').closest('.grid3'));
+  else if (m.opening) revealInPanel(primaryInput('openingHeaderText').closest('.grid3'));
 }
 
 /** Speed ratio that puts the producers-header lock (tExec) at tTarget: tExec falls as the ratio rises, so bisect (in log space). */
@@ -3589,7 +3831,7 @@ function bindTimeline() {
     const ratio = Math.round(ratioForSplit(t) * 100) / 100;
     if (ratio === state.config.speedRatio) return;
     state.config.speedRatio = ratio;
-    document.querySelector('[data-setting="speedRatio"]').value = ratio;
+    primaryInput('speedRatio').value = ratio;
     state.timing = computeTiming(state.layout, state.config, state.skin);
     renderTimeline(); el('tlDivider').classList.add('dragging');
     updatePacingReadout(); setTime(preview.t);
@@ -3723,13 +3965,16 @@ function bindSidebarResizer() {
 
 function bindUI() {
   bindCollapsibleSections();
+  bindPanelNav();
   bindTimeline();
   for (const sel of document.querySelectorAll('.res-select')) sel.addEventListener('input', syncResCustomFields);
   el('btnPixelFontSetup').addEventListener('click', pixelFontSetup);
   bindFontSelectArrows();
   bindPreviewZoom();
   bindSidebarResizer();
-  for (const input of settingEls()) input.addEventListener('input', scheduleRebuild);
+  // any setting control (primary or copy): sync its twins, then re-layout
+  // (capture phase, so events that don't bubble, e.g. dispatched from code, are caught too)
+  document.addEventListener('input', (e) => { const t = e.target; if (!t.dataset || !t.dataset.setting) return; mirrorSetting(t); syncFxFields(); scheduleRebuild(); }, true);
   el('btnPlay').addEventListener('click', togglePreview);
   el('btnStart').addEventListener('click', () => { pausePreview(); setTime(0); });
   el('btnEnd').addEventListener('click', () => { pausePreview(); setTime(lastFrameTime()); });
@@ -3818,6 +4063,7 @@ function bindUI() {
 
 async function init() {
   buildTextStyleUI();                           // generated inputs must exist before settings bind to them
+  buildPartsView();                             // live copies of those inputs, grouped by part (needs them to exist)
   await loadFontLibrary();                      // fonts registered before settings are applied and before the first layout
   await loadBundledFonts();                     // ...plus the ones that ship with the page (PrevueGrid), on any machine
   renderFontLibrary();
@@ -3846,9 +4092,9 @@ async function init() {
   const cfg = readSettingsFromUI();
   if (!cfg.execNamesText && !cfg.prodNamesText && !cfg.channelNamesText) {
     const d = generateTestData();
-    document.querySelector('[data-setting="execNamesText"]').value = d.exec.join('\n');
-    document.querySelector('[data-setting="prodNamesText"]').value = d.prod.join('\n');
-    document.querySelector('[data-setting="channelNamesText"]').value = d.channels.join('\n');
+    primaryInput('execNamesText').value = d.exec.join('\n');
+    primaryInput('prodNamesText').value = d.prod.join('\n');
+    primaryInput('channelNamesText').value = d.channels.join('\n');
   }
   await rebuild();
   setTime(0);

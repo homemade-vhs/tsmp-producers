@@ -62,7 +62,7 @@ The panel at the top of the controls. **Export theme…** saves every setting ex
 | Names per row | exec 2, prod 3 | 1–4 supported for both. |
 | Banner every N rows | 12 / 12 | 0 disables. Each insert takes the next entry of the **every-N-rows queue** (banners or blocks, see below). Nothing is inserted after a section's last row. |
 | Header height | 64 | px at 1080p, like every size. Row height (88) and banner height (176) are in Look. |
-| Clock | in every header (one at a time) | Only the header at the top shows the time (an outgoing header keeps it until it's fully pushed out); any other header on screen shows a blank box. `pinned`: the clock box stays at the lock line and headers slide underneath it (what the old channel did). Its colours come from the "Pinned clock style" header style. |
+| Clock | in every header (one at a time) | The time is drawn once, at the top spot: header boxes slide underneath it during a push-out, so it never jumps or re-appears (in a scroll-in lead-in it rides with the first header until that header locks). Every header's own clock box is blank. `pinned`: the clock box stays at the lock line and headers slide underneath it (what the old channel did). Its colours come from the "Pinned clock style" header style. |
 | Exec / Producers header style | Blue | Header styles are presets (see Headers). |
 | Opening header | off | An extra first header above the Exec header, with its own text and style: a date, the episode number. With the locked lead-in it shows at t = 0 until the Exec header pushes it out; combine it with Hold at start. |
 | Clock start | 10:02:07 | `H:MM:SS`; 24-hour input is fine, display is 12-hour. Advances with t, never the wall clock. |

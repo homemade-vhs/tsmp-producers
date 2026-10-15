@@ -2163,14 +2163,18 @@ function drawGrid(ctx, t, reveal) {
     if (y + h.height <= g.y || y >= g.y + g.h + 1) return;
     items.push({ kind: 1, header: h, y, moving: !locked });
   });
-  // Only one clock at a time: the header occupying the lock line shows it (an outgoing header keeps it until it's fully
-  // pushed out); before any header reaches the top (scroll-in), the topmost one does. Every other header's box is blank.
+  // One clock, and it stays put: in "clock in every header" mode the time is drawn once at the lock line, on top of the
+  // header boxes, which slide underneath it during a push-out (every header box itself is blank). It only rides along
+  // with the first header during a scroll-in, until that header locks. Colours come from the header under it.
   let clockOwner = layout.headers.findIndex((h, i) => h.kind !== 'banner' && ys[i] <= L && L < ys[i] + h.height);
   if (clockOwner < 0) {
     let best = Infinity;
     layout.headers.forEach((h, i) => { if (h.kind !== 'banner' && ys[i] >= L && ys[i] < best && ys[i] < g.y + g.h) { best = ys[i]; clockOwner = i; } });
   }
-  for (const it of items) if (it.kind === 1) it.showsClock = layout.headers[clockOwner] === it.header;
+  if (skin.clockMode === 'header' && clockOwner >= 0) {
+    const riding = ys[clockOwner] > L;
+    items.push({ kind: 3, y: riding ? (sub ? place(ys[clockOwner]) : Math.round(ys[clockOwner])) : L, moving: riding, style: layout.headers[clockOwner].style });
+  }
   if (skin.clockMode === 'pinned' && layout.headers.length) {
     const riding = ys[0] > L;   // scroll-in lead-in: the clock rides with the first header until it locks
     items.push({ kind: 2, y: riding ? (sub ? place(ys[0]) : Math.round(ys[0])) : L, moving: riding });
@@ -2184,7 +2188,8 @@ function drawGrid(ctx, t, reveal) {
   const draw = (c, it) => {
     if (it.kind === 0) drawRow(c, skin, it.row, it.y, it.parts);
     else if (it.kind === 1 && it.header.kind === 'banner') skin.drawBanner(c, { x: g.x, y: it.y, w: g.w, h: it.header.height }, it.header.banner, { tier: it.header.section, parts: it.parts });
-    else if (it.kind === 1) skin.drawHeader(c, { x: g.x, y: it.y, w: g.w, h: it.header.height }, it.header, it.showsClock ? clockText : '', { tier: it.header.section, parts: it.parts });
+    else if (it.kind === 1) skin.drawHeader(c, { x: g.x, y: it.y, w: g.w, h: it.header.height }, it.header, '', { tier: it.header.section, parts: it.parts });
+    else if (it.kind === 3) { if (!it.parts || it.parts.content !== false) skin.drawClockText(c, skin.headerTileBox({ x: g.x, y: it.y, w: g.w, h: skin.headerHeight }), clockText, it.style); }
     else skin.drawClockBox(c, { x: g.x, y: it.y, w: g.w, h: skin.headerHeight }, clockText, state.clockStyle, { parts: it.parts });
   };
   ctx.save();

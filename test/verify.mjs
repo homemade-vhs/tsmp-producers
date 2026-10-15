@@ -63,7 +63,7 @@ if (env.enc.supported) pass(`encoder config for the default size: ${env.enc.code
 // (the full-size render path matters just as much as the new 832×624 default).
 await page.evaluate(async () => {
   const set = (k, v) => { const i = document.querySelector(`[data-setting="${k}"]`); if (i.type === 'checkbox') i.checked = v; else i.value = v; };
-  for (const [k, v] of Object.entries({ outputRes: '3328x2496', rowHeightPx: 88, headerHeightPx: 64, minFontScale: 0.75, textRender: 'smooth', txWrapCell: false })) set(k, v);
+  for (const [k, v] of Object.entries({ outputRes: '3328x2496', rowHeightPx: 88, headerHeightPx: 64, minFontScale: 0.75, textRender: 'smooth', txWrapCell: false, speedRatio: 1, startHoldFrames: 0, loadInFrames: 0, easeInFrames: 0, sectionEaseFrames: 0 })) set(k, v);   // + a plain linear scroll from t = 0
   for (const k of ['Cell', 'Tile', 'Header', 'Clock', 'Banner', 'Promo']) { set('font' + k, ''); set('fontPx' + k, ''); set('fontWidth' + k, 92); set('fontBold' + k, true); }
   await window.__tvguide.rebuild();
 });
@@ -327,8 +327,8 @@ pass('reference frames written to test/out');
     const T = window.__tvguide;
     const set = async (k, v) => { const i = document.querySelector(`[data-setting="${k}"]`); i.value = v; i.dispatchEvent(new Event('input')); await new Promise((res) => setTimeout(res, 500)); };
     const before = T.state.skin.bevel;
-    await set('bevelPx', '9'); await set('colExecCellFill', '#ff00ff'); await set('colExecTileFill', '#00ffff');   // t = 0 shows exec rows (per-tier colours)
-    T.setTime(0);
+    await set('bevelPx', '9'); await set('colExecCellFill', '#ff00ff'); await set('colExecTileFill', '#00ffff');   // the start shows exec rows (per-tier colours)
+    T.setTime(1);   // after the default 12-frame load-in, still inside the 24-frame hold (same layout as t = 0)
     const S = T.state.skin; const ctx = document.getElementById('outputCanvas').getContext('2d');
     const rowTop = S.gridRect.y + S.headerHeight;
     const cellPx = Array.from(ctx.getImageData(S.channelTileWidth + 40, rowTop + S.rowHeight - S.gap - S.bevel - 6, 1, 1).data);   // bottom-left of the first cell, below any text
@@ -399,6 +399,29 @@ pass('reference frames written to test/out');
   const ok = r.first === 'opening' && r.hasResume && r.betweenBanner && r.holdS0 && Math.abs(r.hold - 48 / (24000 / 1001)) < 1e-9 && r.endExact && r.totalOk && r.lockedAtL && r.pushedOut
     && r.reveal[0].boxes === 0 && r.reveal[0].content === 0 && r.reveal[1].boxes > 0 && r.reveal[2] === null && r.pixelDeterministic;
   if (ok) pass('blocks lock + push-out, opening header, hold keeps total, load-in stages, pixel text deterministic'); else fail('blocks / hold / load-in / pixel', JSON.stringify(r));
+}
+
+// 14. easing: smooth ramp after the hold and through the section change, totals still exact; sub-pixel motion is deterministic
+{
+  const r = await page.evaluate(async () => {
+    const T = window.__tvguide;
+    const set = (k, v) => { const i = document.querySelector(`[data-setting="${k}"]`); i.value = v; };
+    for (const [k, v] of Object.entries({ speedRatio: 0.7, startHoldFrames: 24, easeInFrames: 36, sectionEaseFrames: 48, easeInCurve: 'sine', sectionEaseCurve: 'smoother', scrollMotion: 'subpixel' })) set(k, v);
+    await T.rebuild();
+    const tm = T.state.timing, fps = T.state.config.fps;
+    const steps = Array.from({ length: 90 }, (_, n) => T.scrollAt(tm, (n + 1) / fps) - T.scrollAt(tm, n / fps));
+    const ramp = steps.slice(24, 60);
+    const c = document.getElementById('outputCanvas'), ctx = c.getContext('2d');
+    const hash = () => { const d = ctx.getImageData(0, 0, c.width, c.height).data; let h = 0x811c9dc5; for (let i = 0; i < d.length; i += 13) { h ^= d[i]; h = Math.imul(h, 16777619); } return h >>> 0; };
+    T.renderFrame(40 / fps); hash(); T.renderFrame(40 / fps); const h1 = hash(); T.renderFrame(77 / fps); T.renderFrame(40 / fps); const h2 = hash();
+    return {
+      held: steps.slice(0, 23).every((d) => d === 0), rampRises: ramp.every((d, i) => i === 0 || d >= ramp[i - 1] - 1e-9), reachesCruise: Math.abs(steps[70] - tm.vExec / fps) < 1e-6,
+      endExact: Math.abs(T.scrollAt(tm, tm.total) - tm.sEnd) < 1e-6, boundaryExact: Math.abs(T.scrollAt(tm, tm.tExec) - tm.boundaryS) < 1e-6,
+      changeSmooth: Math.abs(T.speedAt(tm, tm.ease.t2 + 1e-7) - tm.vExec) < 1e-3 && Math.abs(T.speedAt(tm, tm.ease.t3 - 1e-7) - tm.v) < 1e-3, ratio: tm.vExec / tm.v,
+      subpixelDeterministic: h1 === h2,
+    };
+  });
+  if (r.held && r.rampRises && r.reachesCruise && r.endExact && r.boundaryExact && r.changeSmooth && Math.abs(r.ratio - 0.7) < 1e-9 && r.subpixelDeterministic) pass('easing: hold, smooth ramp to cruise, smooth section speed change, exact totals; sub-pixel motion deterministic'); else fail('easing', JSON.stringify(r));
 }
 
 fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify(results, null, 2));

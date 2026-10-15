@@ -3,7 +3,7 @@
 Renders the podcast's Patreon credits as a late-90s cable "TV Guide Channel" listings grid and exports it as a video for Premiere. Out of the box it renders **832×624 (exactly ¼ of the 3328×2496 podcast master, 4:3) at 23.976 fps** with **PrevueGrid at 1:1** (25 px, pixel text), ready for ntsc-rs and a clean 400% scale-up in Premiere. This is the **greybox v1**: every visual is drawn procedurally in canvas so pacing and motion can be judged; designed PNGs and the real font drop in later through the skin layer without touching layout or export.
 
 - `tvguide-credits.html` — the whole tool. Vanilla HTML/CSS/JS, no build step.
-- `lib/` — vendored [Mediabunny](https://mediabunny.dev) (MP4 muxer + WebCodecs plumbing). See `lib/README.md`.
+- `lib/` — vendored [Mediabunny](https://mediabunny.dev) (MP4 muxer + WebCodecs plumbing, see `lib/README.md`) and the panel's UI font, Plus Jakarta Sans (`lib/ui-font.js`, SIL OFL: `lib/fonts/PlusJakartaSans-OFL.txt`).
 - `assets/` — `fonts/` holds font files (see Fonts below). Later: PNGs, `manifest.json`.
 - `test/` — optional headless verification (needs Node; the tool itself needs nothing).
 
@@ -25,7 +25,7 @@ npx serve .
 
 and open the printed `http://localhost:…` URL. Nothing in v1 needs this.
 
-Drag the divider between the preview and the control panel to make the panel wider (double-click it to reset); the width is remembered. In any font dropdown, ↑ / ↓ steps to the previous / next font and applies it straight away.
+Panel sections are colour-coded and collapse when you click their heading (remembered). Drag the divider between the preview and the control panel to make the panel wider (double-click it to reset); the width is remembered. In any font dropdown, ↑ / ↓ steps to the previous / next font and applies it straight away.
 
 Settings and the three name lists persist in the browser's localStorage. "Reset settings to defaults" clears them and reloads the test data. Settings saved before the defaults changed stay as they were: click Reset once to pick up the new ones.
 
@@ -38,8 +38,9 @@ The panel at the top of the controls. **Export theme…** saves every setting ex
 1. **Names.** Paste one name per line into Executive Producers, Podcast Producers, and Channel names, or drop a Patreon members CSV on the import box. The importer finds the name / tier / status columns by header text (you can override), lets you pick which tier is Executive Producers and which is Podcast Producers. It pre-selects SuperMega's tiers: **Funniest Brother → Executive Producers**, **Funnier Brother → Podcast Producers** (generic "Executive Producer" / "Producer" names are recognised too). Free members aren't credited unless you choose "all other tiers", and offers "active patrons only" when a status column exists. "Load test data" fills ~320 exec / ~1,050 producer names with long names, emoji and non-Latin scripts mixed in, plus ~40 callsigns.
 2. **Timing.** Set the duration and fps (must match your Premiere sequence). Duration can be entered in seconds or in frames. Frames are what actually gets rendered: at 23.976 fps, 180 s is not a whole number of frames, so "180 s" becomes 4316 frames = 180.013 s, and the hint under the field shows the exact result. If the credits slot in Premiere is a known number of frames, enter that directly. `Speed ratio` makes the exec section scroll faster (>1) or slower (<1) than the producers; the total always lands exactly on the last frame.
 3. **Tune by the Pacing table.** It shows, per section: names, rows, banner rows, how long the section runs, rows per second, names per second, seconds per row, and how many seconds a row is on screen (from entering at the bottom to disappearing under the locked header). It updates live.
-4. **Preview.** Play/pause, scrub, frame step with the arrow keys (Shift = 1 second), Home/End. The preview snaps to frame boundaries so what you see is exactly a frame that will be exported. The size menu at the end of the transport bar sets the preview size: **Fit** (shows the percentage it works out to) or a fixed 25–800%. **100%** is one output pixel per physical screen pixel (Retina included), and 100% and up are drawn with hard pixels, so you see exactly what's in the file. When zoomed, scroll or drag to pan. Keys: `0` fit, `-` / `=` zoom out / in. The choice is remembered.
-5. **Export.** See below.
+4. **Timeline.** Under the play controls: the hold (striped), the load-in (yellow tick), the Executive Producers (purple) and Podcast Producers (teal) sections with their run times, the ease-in and the speed change shaded in. Click or drag anywhere to scrub. **Drag the white bar** between the sections to move the split: the speed ratio follows live (it's saved when you let go). **Flags**: a pennant for every banner row (at the moment it's centred on screen) and a dot for every block header (as it locks); click one to jump there and open that banner's or block's editor.
+5. **Preview.** Play/pause, scrub, frame step with the arrow keys (Shift = 1 second), Home/End. The preview snaps to frame boundaries so what you see is exactly a frame that will be exported. The size menu at the end of the transport bar sets the preview size: a fixed 25–800% (**100%** is the default) or **Fit** (shows the percentage it works out to). **100%** is one output pixel per physical screen pixel (Retina included), and 100% and up are drawn with hard pixels, so you see exactly what's in the file. When zoomed, scroll or drag to pan. Keys: `0` fit, `-` / `=` zoom out / in. The choice is remembered.
+6. **Export.** See below.
 
 ### Settings reference
 
@@ -47,11 +48,14 @@ The panel at the top of the controls. **Export theme…** saves every setting ex
 |---|---|---|
 | Duration / unit | 180 s | Seconds are rounded to whole frames; enter frames for an exact count. |
 | FPS | 23.976 | 23.976, 24, 25, 29.97, 30, 50, 59.94, 60. Fractional rates are exact (24000/1001) in the timestamps and in the MP4 timescale. |
-| Speed ratio | 1.0 | exec speed ÷ producer speed. |
+| Speed ratio | 0.7 | exec speed ÷ producer speed (0.7: the execs scroll at 70% of the producers' speed). Also draggable on the timeline. |
+| Ease in after the hold | 36 frames, ease in-out (sine) | The scroll accelerates from standstill to full speed over this many frames instead of jumping. Curves: ease in-out (sine), smooth (smoothstep), smoother (smootherstep), ease in (gentle start, then straight to speed), ease out (quick start, settles in), linear. 0 = jump to speed. |
+| Exec → Producers speed change | 48 frames, ease in-out (sine) | Glide between the two section speeds over this many frames, centred on the moment the Producers header locks. 0 = instant change. |
+| Scroll motion | whole pixels | `whole pixels`: everything sits on whole pixels (crisp; at a speed like 6.5 px/frame rows step 6, 7, 6, 7…). `smooth sub-pixel`: moving rows and headers are blended between pixels so the glide is perfectly even (a touch soft); the locked header and the clock stay crisp. |
 | End behavior | scrollOff | `scrollOff`: the last row's bottom edge passes the bottom of the locked header exactly at t = total. `stopAtEnd`: the last row parks at the bottom of the grid. |
 | Lead-in | locked | `locked`: at t = 0 the first header is already locked with rows beneath (tuned in mid-scroll). `scrollIn`: everything scrolls in from the bottom. |
-| Hold at start | 0 frames | The scroll stays frozen for this many frames (the clock keeps ticking). The total duration doesn't change; the scroll runs slightly faster to make up for it. |
-| Cable-box load-in | 0 frames (off) | Over this many frames the grid shows only its solid background, then the boxes pop in top to bottom, then the text and images (and the promo text). Usually set it shorter than the hold so the whole build-up happens before the scroll starts. |
+| Hold at start | 24 frames | The scroll stays frozen for this many frames (the clock keeps ticking). The total duration doesn't change; the scroll runs slightly faster to make up for it. |
+| Cable-box load-in | 12 frames | Over this many frames the grid shows only its solid background, then the boxes pop in top to bottom, then the text and images (and the promo text). Usually set it shorter than the hold so the whole build-up happens before the scroll starts. |
 | Seed | 1 | Use the episode number. Only affects the channel-name shuffle. |
 | Channel start | 2 | Channel numbers count up from here across both sections; banners and headers don't consume a number. |
 | Min font scale | 1 | Text may shrink to this fraction of its size before it truncates with an ellipsis. 1 = never shrink, which keeps pixel fonts 1:1. |

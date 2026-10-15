@@ -5,107 +5,179 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TV Guide Credits Scroller</title>
 <style>
+  /* Look borrowed from Stream Desk: near-black layered surfaces, rounded cards tinted with their section colour,
+     a soft top-edge sheen, lowercase headings, Plus Jakarta Sans (lib/ui-font.js). */
   :root {
-    --bg: #14161c; --panel: #1b1e26; --panel2: #23272f; --line: #343946;
-    --text: #e6e8ee; --muted: #9aa1b3; --accent: #ffd94a; --accent2: #6ea8ff; --danger: #ff6b6b; --ok: #6fd58a;
     color-scheme: dark;
+    /* surfaces */
+    --page: #0a0a0f; --panel: #0d0d14; --raised: #1a1a24; --row: #24242f; --well: #101018; --selected: #2c2c3a;
+    --hairline: rgba(255, 255, 255, 0.07); --line: rgba(255, 255, 255, 0.1);
+    /* text */
+    --text: #f2f2f7; --text-2: #b4b4c6; --muted: #8f8fa6; --heading: #a3a3b8; --on-color: #0a0a0f;
+    /* accents */
+    --blue: #5b8cff; --green: #4fd68a; --yellow: #ffd24a; --orange: #ff9f45; --red: #ff5d5d;
+    --exec: #b57bff; --prod: #3fd0d4; --hold: #3a3a48;
+    /* older names still used inline in the markup / code */
+    --bg: var(--page); --panel2: var(--raised); --accent: var(--yellow); --accent2: var(--blue); --danger: var(--red); --ok: var(--green);
+    /* shapes & gloss */
+    --r-card: 22px; --r-row: 12px; --r-ctl: 10px;
+    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 60%);
+    --font: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }   /* .editor / inline display:flex would otherwise override the hidden attribute */
   html, body { margin: 0; height: 100%; }
   body {
-    background: var(--bg); color: var(--text);
-    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 20% -10%, rgba(91, 140, 255, 0.07), transparent 60%), var(--page); color: var(--text);
+    font: 500 13px/1.45 var(--font);
     display: grid; grid-template-columns: minmax(0, 1fr) 6px var(--sidebar-w, 440px); height: 100vh; overflow: hidden;
   }
-  h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: .02em; }
-  h2 { font-size: 12px; margin: 0; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; margin: 2px 4px 2px; text-transform: lowercase; }
+  h1 .hint { font-weight: 600; letter-spacing: 0; }
+  h2 { font-size: 15px; font-weight: 800; margin: 0; text-transform: lowercase; color: color-mix(in oklab, var(--tint, var(--blue)) 65%, white); letter-spacing: -0.01em; }
   code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer; font: inherit; }
-  button:hover { border-color: var(--accent2); }
-  button.primary { background: #2d4c8a; border-color: #3f66b5; }
-  button.danger { border-color: var(--danger); color: var(--danger); }
-  button:disabled { opacity: .45; cursor: default; }
-  input[type=number], input[type=text], select, textarea {
-    background: #0f1116; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font: inherit; width: 100%;
+  b { font-weight: 700; }
+
+  /* ---- controls ---- */
+  button, .sm-btn {
+    background: var(--sheen), var(--raised); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-ctl);
+    padding: 6px 12px; cursor: pointer; font: 600 13px var(--font); box-shadow: var(--edge);
   }
+  button:hover, .sm-btn:hover { background: var(--sheen), #22222e; border-color: rgba(255, 255, 255, 0.16); }
+  button.primary { background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 60%), var(--blue); color: var(--on-color); font-weight: 800; border-color: transparent; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+  button.primary:hover { filter: brightness(1.08); }
+  button.danger { color: var(--red); border-color: color-mix(in oklab, var(--red) 45%, transparent); }
+  button:disabled { opacity: .4; cursor: default; filter: none; }
+  button.sm, .sm-btn { padding: 4px 10px; font-size: 12px; border-radius: 9px; display: inline-block; }
+  input[type=number], input[type=text], select, textarea {
+    background: var(--well); color: var(--text); border: 1px solid var(--hairline); border-radius: var(--r-ctl);
+    padding: 6px 9px; font: 500 13px var(--font); width: 100%; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid color-mix(in oklab, var(--tint, var(--blue)) 70%, transparent); outline-offset: 1px; }
   textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-  input[type=range] { width: 100%; }
-  label { display: block; color: var(--muted); font-size: 12px; }
-  label > span { display: block; margin-bottom: 2px; }
-  label.inline { display: flex; align-items: center; gap: 6px; }
+  input[type=checkbox] { accent-color: var(--tint, var(--blue)); width: 15px; height: 15px; margin: 0; }
+  input[type=range] { width: 100%; accent-color: var(--blue); }
+  input[type=color] { background: var(--well); border: 1px solid var(--hairline); border-radius: 8px; cursor: pointer; }
+  label { display: block; color: var(--text-2); font-size: 12px; font-weight: 600; }
+  label > span { display: block; margin-bottom: 4px; }
+  label.inline { display: flex; align-items: center; gap: 8px; }
   label.inline > span { margin: 0; }
+  kbd { background: var(--raised); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; font: 600 11px var(--font); }
+  progress { width: 100%; height: 10px; accent-color: var(--green); }
 
   /* ---- left column: stage ---- */
-  .stage { display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow: auto; min-width: 0; }
-  .canvas-wrap { --aspect: 1.3333; background: #000; border: 1px solid var(--line); line-height: 0; width: min(100%, calc((100vh - 300px) * var(--aspect))); align-self: center; }
+  .stage { display: flex; flex-direction: column; gap: 12px; padding: 14px; overflow: auto; min-width: 0; }
+  .canvas-wrap { --aspect: 1.3333; background: #000; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; line-height: 0; width: min(100%, calc((100vh - 340px) * var(--aspect))); align-self: center; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); }
   #outputCanvas { width: 100%; height: auto; display: block; }
   /* fixed zoom: the wrap becomes a scrollable viewport; the canvas gets an exact CSS size (1 output px = zoom × screen px) */
-  .canvas-wrap.zoomed { flex: none; width: 100%; height: calc(100vh - 300px); min-height: 240px; overflow: auto; align-self: stretch; display: flex; cursor: grab; }
+  .canvas-wrap.zoomed { flex: none; width: 100%; height: calc(100vh - 340px); min-height: 240px; overflow: auto; align-self: stretch; display: flex; cursor: grab; }
   .canvas-wrap.zoomed.panning { cursor: grabbing; }
   .canvas-wrap.zoomed #outputCanvas { flex: none; margin: auto; max-width: none; }
   .canvas-wrap.zoomed.pixelated #outputCanvas { image-rendering: pixelated; }
-  .transport select { width: auto; }
-  .transport { display: flex; align-items: center; gap: 8px; }
+  .transport { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 16px; background: var(--sheen), var(--panel); border: 1px solid var(--hairline); box-shadow: var(--edge); }
   .transport button { white-space: nowrap; flex: 0 0 auto; }
-  .transport .readout { min-width: 220px; text-align: right; color: var(--muted); }
+  .transport select { width: auto; }
+  .transport .readout { flex: 1; text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
-  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 10px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 12px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 12px; }
+  .card, fieldset {
+    --tint: var(--blue);
+    background: var(--sheen), color-mix(in oklab, var(--tint) 7%, #111119);
+    border: 1px solid color-mix(in oklab, var(--tint) 26%, transparent); border-radius: var(--r-card);
+    padding: 14px 16px 16px; margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; box-shadow: var(--edge);
+  }
   table.pacing { border-collapse: collapse; width: 100%; }
-  table.pacing th, table.pacing td { text-align: right; padding: 3px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
-  table.pacing th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  table.pacing th, table.pacing td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--hairline); font-variant-numeric: tabular-nums; }
+  table.pacing th { color: var(--heading); font-weight: 700; font-size: 11px; text-transform: lowercase; }
   table.pacing td:first-child, table.pacing th:first-child { text-align: left; }
-  .stats { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; }
-  .stats dt { color: var(--muted); }
+  table.pacing tr.exec td:first-child { color: color-mix(in oklab, var(--exec) 75%, white); font-weight: 700; }
+  table.pacing tr.prod td:first-child { color: color-mix(in oklab, var(--prod) 75%, white); font-weight: 700; }
+  .stats { display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px; }
+  .stats dt { color: var(--heading); }
   .stats dd { margin: 0; }
-  .hint { color: var(--muted); font-size: 12px; }
+  .hint { color: var(--muted); font-size: 12px; font-weight: 500; }
   .status { min-height: 1.2em; }
-  .status.error { color: var(--danger); }
-  .status.ok { color: var(--ok); }
-  progress { width: 100%; height: 14px; }
+  .status.error { color: var(--red); }
+  .status.ok { color: var(--green); }
+
+  /* ---- timeline: sections, ease ramps, banner flags, draggable exec/producer split ---- */
+  .timeline { padding: 10px 14px 12px; border-radius: 16px; background: var(--sheen), var(--panel); border: 1px solid var(--hairline); box-shadow: var(--edge); user-select: none; }
+  /* two lanes so a block header and its first banner (same moment) never overlap: banner pennants on top, block dots below */
+  .tl-flags { position: relative; height: 32px; }
+  .tl-flag { position: absolute; top: 0; width: 15px; height: 14px; margin-left: -1px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; cursor: pointer; }
+  .tl-flag::before { content: ''; position: absolute; left: 0; top: 0; width: 2px; height: 32px; background: color-mix(in oklab, var(--flag) 70%, white); border-radius: 1px; pointer-events: none; }
+  .tl-flag::after { content: ''; position: absolute; left: 2px; top: 0; width: 11px; height: 9px; background: var(--flag); border-radius: 0 3px 3px 0; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
+  .tl-flag.block { top: 17px; width: 14px; margin-left: -7px; }
+  .tl-flag.block::before { left: 6px; top: 8px; height: 7px; }
+  .tl-flag.block::after { border-radius: 50%; width: 9px; height: 9px; left: 2.5px; top: 0; box-shadow: 0 0 0 2px var(--page), 0 0 0 3px color-mix(in oklab, var(--flag) 70%, white); }
+  .tl-flag:hover { background: none; z-index: 2; filter: brightness(1.3); }
+  .tl-track { position: relative; height: 34px; border-radius: 10px; background: var(--well); overflow: visible; cursor: pointer; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5); }
+  .tl-seg { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding: 0 10px; overflow: hidden; white-space: nowrap; font-size: 11px; font-weight: 800; letter-spacing: .02em; text-transform: lowercase; color: rgba(255, 255, 255, 0.92); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+  .tl-seg.first { border-radius: 10px 0 0 10px; } .tl-seg.last { border-radius: 0 10px 10px 0; }
+  .tl-seg.hold { background: repeating-linear-gradient(135deg, var(--hold) 0 6px, #2c2c38 6px 12px); color: var(--text-2); }
+  .tl-seg.exec { background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 70%), color-mix(in oklab, var(--exec) 62%, #1a1a24); }
+  .tl-seg.prod { background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 70%), color-mix(in oklab, var(--prod) 55%, #1a1a24); }
+  .tl-ramp { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+  .tl-label { background: none; pointer-events: none; padding-left: 14px; }
+  .tl-loadin { position: absolute; top: 0; height: 4px; border-radius: 10px 0 0 0; background: var(--yellow); opacity: .85; pointer-events: none; }
+  .tl-playhead { position: absolute; top: -6px; bottom: -6px; width: 2px; margin-left: -1px; background: #fff; border-radius: 2px; pointer-events: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
+  .tl-playhead::before { content: ''; position: absolute; top: -4px; left: -4px; width: 10px; height: 6px; background: #fff; border-radius: 2px; }
+  .tl-divider { position: absolute; top: -4px; bottom: -4px; width: 14px; margin-left: -7px; cursor: ew-resize; z-index: 3; touch-action: none; }
+  .tl-divider::before { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; width: 4px; border-radius: 3px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 10px rgba(255, 255, 255, 0.35); }
+  .tl-divider:hover::before, .tl-divider.dragging::before { background: var(--yellow); }
+  .tl-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  .tl-meta .key { display: inline-flex; align-items: center; gap: 5px; margin-right: 10px; }
+  .tl-meta .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  .tl-tip { position: fixed; z-index: 50; pointer-events: none; padding: 5px 9px; border-radius: 9px; background: var(--raised); border: 1px solid var(--line); font-size: 12px; font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); white-space: nowrap; }
 
   /* ---- sidebar resizer: drag to resize, double-click to reset ---- */
-  .resizer { cursor: col-resize; background: var(--line); opacity: .5; touch-action: none; }
-  .resizer:hover, .resizer.dragging { background: var(--accent2); opacity: 1; }
+  .resizer { cursor: col-resize; background: transparent; touch-action: none; position: relative; }
+  .resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; background: var(--hairline); }
+  .resizer:hover::after, .resizer.dragging::after { background: var(--blue); }
   body.resizing { cursor: col-resize; user-select: none; }
 
   /* ---- right column: controls ---- */
-  .controls { border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-  fieldset { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px 10px; margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  legend { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
-  .dropzone { border: 1px dashed var(--line); border-radius: 6px; padding: 10px; text-align: center; color: var(--muted); }
-  .dropzone.over { border-color: var(--accent2); color: var(--text); }
-  .diag { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; font-size: 12px; }
-  .diag .bad { color: var(--danger); }
-  .diag .good { color: var(--ok); }
-  body.exporting .controls, body.exporting .transport { pointer-events: none; opacity: .5; }
-  kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; }
-  button.sm { padding: 3px 8px; font-size: 12px; }
-  .sm-btn { display: inline-block; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; color: var(--text); }
-  .sm-btn:hover { border-color: var(--accent2); }
-  .qlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-  .qlist li, .qlist .item { display: flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
-  .qlist .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .qlist .swatch { width: 14px; height: 14px; border-radius: 2px; border: 1px solid var(--line); flex: 0 0 auto; }
-  .qlist .idx { color: var(--muted); min-width: 1.5em; text-align: right; }
-  .editor { border: 1px solid var(--accent2); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
-  #bannerPreview { width: 100%; height: auto; background: #0b1150; border: 1px solid var(--line); display: block; }
+  .controls { background: rgba(13, 13, 20, 0.7); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  fieldset > legend {
+    float: left; width: 100%; padding: 0; margin: 0; display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 15px; font-weight: 800; letter-spacing: -0.01em; text-transform: lowercase; color: color-mix(in oklab, var(--tint) 65%, white);
+  }
+  fieldset > legend::before { content: ''; width: 8px; height: 8px; border-radius: 3px; background: var(--tint); box-shadow: 0 0 10px color-mix(in oklab, var(--tint) 60%, transparent); flex: none; }
+  fieldset > legend::after { content: '▾'; margin-left: auto; color: var(--muted); font-size: 12px; transition: transform 150ms; }
+  fieldset.collapsed > legend::after { transform: rotate(-90deg); }
+  fieldset.collapsed { padding-bottom: 14px; gap: 0; }
+  fieldset.collapsed > :not(legend) { display: none !important; }
+  .dropzone { border: 1.5px dashed color-mix(in oklab, var(--tint, var(--blue)) 40%, transparent); border-radius: 14px; padding: 14px; text-align: center; color: var(--text-2); }
+  .dropzone.over { border-color: var(--tint, var(--blue)); color: var(--text); background: color-mix(in oklab, var(--tint, var(--blue)) 10%, transparent); }
+  .diag { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 12px; }
+  .diag .bad { color: var(--red); }
+  .diag .good { color: var(--green); }
+  body.exporting .controls, body.exporting .transport, body.exporting .timeline { pointer-events: none; opacity: .5; }
+  .qlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  .qlist li, .qlist .item { display: flex; align-items: center; gap: 8px; background: var(--sheen), var(--row); border-radius: var(--r-row); padding: 5px 6px 5px 10px; box-shadow: var(--edge); }
+  .qlist .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .qlist .swatch { width: 14px; height: 14px; border-radius: 5px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18); flex: 0 0 auto; }
+  .qlist .idx { color: var(--muted); min-width: 1.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  .qlist .tag { color: color-mix(in oklab, var(--tint, var(--yellow)) 75%, white); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .qlist button.sm { padding: 2px 8px; }
+  .editor { border: 1px solid color-mix(in oklab, var(--tint, var(--blue)) 55%, transparent); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: rgba(0, 0, 0, 0.25); }
+  .editor.flash { animation: flash 900ms ease-out; }
+  @keyframes flash { from { box-shadow: 0 0 0 3px color-mix(in oklab, var(--tint, var(--blue)) 70%, transparent); } to { box-shadow: 0 0 0 0 transparent; } }
+  #bannerPreview, .preview-canvas { width: 100%; height: auto; background: #0b1150; border-radius: 8px; display: block; }
   table.look { border-collapse: collapse; width: 100%; }
-  table.look th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; text-align: left; padding: 2px 4px; }
+  table.look th { color: var(--heading); font-weight: 700; font-size: 11px; text-transform: lowercase; text-align: left; padding: 2px 4px; }
   table.look td { padding: 2px 4px; }
-  table.look td:first-child { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  table.look input[type=color] { width: 100%; height: 26px; padding: 1px 2px; }
-  input[type=color].c { width: 100%; height: 26px; padding: 1px 2px; }
-  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 10px; }
-  details.role { border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; }
-  details.role[open] { padding-bottom: 8px; }
-  details.role summary { cursor: pointer; color: var(--text); }
-  details.role .sub { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-top: 6px; }
-  .preview-canvas { width: 100%; height: auto; background: #0b1150; border: 1px solid var(--line); display: block; }
-  .qlist .tag { color: var(--accent); font-size: 11px; white-space: nowrap; }
+  table.look td:first-child { color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  table.look input[type=color], input[type=color].c { width: 100%; height: 28px; padding: 2px 3px; }
+  details.role { border-radius: var(--r-row); padding: 7px 10px; background: var(--sheen), var(--row); box-shadow: var(--edge); }
+  details.role[open] { padding-bottom: 10px; }
+  details.role summary { cursor: pointer; color: var(--text); font-weight: 700; }
+  details.role .sub { color: var(--heading); font-size: 11px; font-weight: 700; text-transform: lowercase; margin: 8px 0 4px; }
 </style>
+<script src="lib/ui-font.js"></script>
 </head>
 <body>
 
@@ -118,7 +190,7 @@
     <button id="btnStepBack" title="Left arrow (Shift = 1 s)">&#9664;</button>
     <button id="btnStepFwd" title="Right arrow (Shift = 1 s)">&#9654;</button>
     <button id="btnEnd" title="End">&#9654;|</button>
-    <input type="range" id="scrubber" min="0" max="0" step="1" value="0">
+    <input type="range" id="scrubber" min="0" max="0" step="1" value="0" hidden>
     <div class="readout mono" id="timeReadout">t = 0.000 s · frame 0 / 0</div>
     <select id="previewZoom" title="Preview size. 100% = one output pixel per physical screen pixel. Keys: 0 fit · - / = zoom out / in. Drag or scroll to pan.">
       <option value="fit">Fit</option><option value="25">25%</option><option value="50">50%</option><option value="100">100% (1:1)</option>
@@ -126,7 +198,13 @@
     </select>
   </div>
 
-  <section class="card">
+  <div class="timeline" id="timeline">
+    <div class="tl-flags" id="tlFlags"></div>
+    <div class="tl-track" id="tlTrack"></div>
+    <div class="tl-meta"><span id="tlLegend"></span><span id="tlHint">click or drag to scrub · drag the white bar to change the exec / producer split · click a flag to jump to that banner and edit it</span></div>
+  </div>
+
+  <section class="card" style="--tint: #5b8cff">
     <h2>Pacing</h2>
     <table class="pacing">
       <thead><tr>
@@ -137,12 +215,12 @@
     <div class="hint">"On screen" = seconds a row is visible, from entering at the bottom of the grid to disappearing under the locked header. "Runs" = how long the section is the current one.</div>
   </section>
 
-  <section class="card">
+  <section class="card" style="--tint: #8f8fa6">
     <h2>Stats</h2>
     <dl class="stats mono" id="statsList"></dl>
   </section>
 
-  <section class="card">
+  <section class="card" style="--tint: #4fd68a">
     <h2>Export</h2>
     <div class="row">
       <button id="btnExportMp4" class="primary">Export MP4 (full)</button>
@@ -165,7 +243,7 @@
 <aside class="controls">
   <h1>TV Guide Credits Scroller <span class="hint">greybox v1</span></h1>
 
-  <fieldset>
+  <fieldset style="--tint: #b57bff">
     <legend>Themes &amp; defaults</legend>
     <div class="row">
       <button id="btnThemeExport" class="sm">Export theme…</button>
@@ -180,7 +258,7 @@
     <div class="hint">A theme is every setting except the patron name lists, as a <code>.json</code> file: send it to the editors and they import it to get the exact same look. Importing applies it straight away; "Save current as my defaults" makes this browser's Reset button come back to it.</div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #5b8cff">
     <legend>Timing</legend>
     <div class="grid3">
       <label><span>Duration</span><div class="row" style="flex-wrap:nowrap;gap:4px"><input type="number" data-setting="duration" min="1" step="1" style="flex:1 1 4em;min-width:4em"><select data-setting="durationUnit" style="flex:0 0 auto;width:auto"><option value="seconds">s</option><option value="frames">frames</option></select></div></label>
@@ -195,9 +273,17 @@
       <label><span>Cable-box load-in (frames, 0 = off)</span><input type="number" data-setting="loadInFrames" min="0" step="1"></label>
     </div>
     <div class="hint">Load-in: the grid first shows only its solid background, then the boxes pop in top to bottom, then the text and images. Hold keeps the scroll frozen (the clock still ticks); the total duration doesn't change, so the scroll runs a little faster to make up for it.</div>
+    <div class="grid3">
+      <label><span>Ease in after the hold (frames, 0 = jump to speed)</span><input type="number" data-setting="easeInFrames" min="0" step="1"></label>
+      <label><span>Ease-in curve</span><select data-setting="easeInCurve"><option value="sine">ease in-out (sine)</option><option value="smooth">smooth (smoothstep)</option><option value="smoother">smoother (smootherstep)</option><option value="easeIn">ease in (gentle start)</option><option value="easeOut">ease out (gentle finish)</option><option value="linear">linear (constant acceleration)</option></select></label>
+      <label><span>Scroll motion</span><select data-setting="scrollMotion"><option value="pixel">whole pixels (crisp)</option><option value="subpixel">smooth sub-pixel (even, a touch soft)</option></select></label>
+      <label><span>Exec → Producers speed change (frames)</span><input type="number" data-setting="sectionEaseFrames" min="0" step="1"></label>
+      <label><span>Speed-change curve</span><select data-setting="sectionEaseCurve"><option value="sine">ease in-out (sine)</option><option value="smooth">smooth (smoothstep)</option><option value="smoother">smoother (smootherstep)</option><option value="easeIn">ease in (gentle start)</option><option value="easeOut">ease out (gentle finish)</option><option value="linear">linear (constant acceleration)</option></select></label>
+    </div>
+    <div class="hint">The scroll accelerates from standstill to full speed over the ease-in, and glides between the two section speeds over the speed change (centred on the moment the Producers header locks). Speeds are re-solved so the total still lands exactly on the last frame. Whole pixels keeps everything crisp but steps unevenly when the speed isn't a whole number of pixels per frame; sub-pixel blends rows between pixels for an even glide (locked headers and the clock stay crisp).</div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #3fd0d4">
     <legend>Grid</legend>
     <div class="grid3">
       <label><span>Seed (episode #)</span><input type="number" data-setting="seed" step="1"></label>
@@ -216,7 +302,7 @@
     </div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #7c83ff">
     <legend>Headers</legend>
     <div class="grid3">
       <label><span>Header height (px at 1080p)</span><input type="number" data-setting="headerHeightPx" min="16" max="300" step="1"></label>
@@ -248,7 +334,7 @@
     </div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #ffd24a">
     <legend>Banners &amp; blocks</legend>
     <div class="hint">A <b>block</b> is an optional header followed by any number of banners: a single banner, a banner with a header on top, or one header with several banners under it. A block's header locks at the top like a section header until the next header pushes it out. Banners, blocks and header styles are saved in this browser (<span id="bannerStorageNote">…</span>); export the library to back them up.</div>
     <div class="row"><b>Every-N-rows queue</b><select id="bannerAddSelect" style="width:auto;flex:1;min-width:8em"></select><button id="btnBannerAdd" class="sm">Add</button><button id="btnBannerQueueClear" class="sm">Clear</button></div>
@@ -298,7 +384,7 @@
     </div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #ff7eb6">
     <legend>Look — bevels &amp; colours</legend>
     <div class="grid3">
       <label><span>Bevel size (px at 1080p)</span><input type="number" data-setting="bevelPx" min="0" max="24" step="1"></label>
@@ -322,7 +408,7 @@
     <div class="hint">Header bars take their colours from header styles (Headers panel), banner boxes from each banner preset. The bevel is the light top-left / dark bottom-right edge, the same size on every box.</div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #4fd68a">
     <legend>Fonts</legend>
     <div class="hint">Choose the <code>assets/fonts</code> folder once; subfolders inside it are scanned too. The fonts are kept in this browser (<span id="fontStorageNote">…</span>), so they're still here next time. Added a font to the folder? Click <b>Rescan folder</b>. Characters a font doesn't have (emoji, non-Latin) fall back to the default font.</div>
     <div class="row">
@@ -352,7 +438,7 @@
     </div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #2fd1a6">
     <legend>Text style — alignment, padding, shadow, stroke</legend>
     <div class="grid3">
       <label><span>Text rendering</span><select data-setting="textRender"><option value="smooth">smooth (anti-aliased)</option><option value="pixel">pixel — no anti-aliasing, blocky</option></select></label>
@@ -364,7 +450,7 @@
     <div class="hint">Padding is the gap between the text and the inside of the box's bevel (px at 1080p). "2 lines" lets long text wrap onto a second line instead of shrinking. The box never changes size, so if two lines don't fit the row height the text gets a bit smaller to fit (raise Row height in Look for room). Shadows and strokes are solid (no blur).</div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #ff9f45">
     <legend>Header clock &amp; promo panel</legend>
     <div class="grid2">
       <label><span>Clock box shows</span><select data-setting="clockContent"><option value="clock">the live clock</option><option value="text">custom text</option></select></label>
@@ -376,7 +462,7 @@
     <label><span>Promo panels (one per line; <code>|</code> starts a new line inside a panel)</span><textarea data-setting="promosText" rows="2"></textarea></label>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #ff5d5d">
     <legend>Output</legend>
     <div class="grid2">
       <label><span>Video window aspect</span><select data-setting="videoAspect"><option value="4:3">4:3 (podcast footage, 3328×2496)</option><option value="16:9">16:9</option><option value="3:2">3:2</option><option value="1:1">1:1</option></select></label>
@@ -397,7 +483,7 @@
     <div class="hint">Row heights, fonts and tile widths scale with the frame height (1.0 = the 1080p look). Lower the design scale to fit more rows or longer names in a 4:3 frame. Internal render draws everything at that small size, then scales it up to the output resolution. With nearest neighbour, a whole-number ratio gives perfectly even pixels: 832×624 and 416×312 divide 3328×2496 exactly, while 640×480 is 5.2× so some pixels come out 5 wide and some 6.</div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #9ad14f">
     <legend>Names</legend>
     <div class="row">
       <button id="btnTestData">Load test data</button>
@@ -409,7 +495,7 @@
     <label><span>Channel names / callsigns (one per line)</span><textarea data-setting="channelNamesText" rows="4"></textarea></label>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #f0a35b">
     <legend>Patreon CSV import</legend>
     <div class="dropzone" id="csvDrop">Drop a Patreon members CSV here, or <label style="display:inline;color:var(--accent2);cursor:pointer">choose a file<input type="file" id="csvFile" accept=".csv,text/csv" hidden></label>.</div>
     <div id="csvMapping" hidden style="display:flex;flex-direction:column;gap:8px">
@@ -430,7 +516,7 @@
     </div>
   </fieldset>
 
-  <fieldset>
+  <fieldset style="--tint: #8f8fa6">
     <legend>Diagnostics</legend>
     <div class="diag" id="diagList"></div>
     <div class="hint">Keys: <kbd>Space</kbd> play/pause · <kbd>←</kbd>/<kbd>→</kbd> frame step (<kbd>Shift</kbd> = 1 s) · <kbd>Home</kbd>/<kbd>End</kbd> · preview size <kbd>0</kbd> fit, <kbd>-</kbd>/<kbd>=</kbd> zoom out/in</div>
@@ -458,11 +544,16 @@ const DEFAULTS = {
   duration: 180,
   durationUnit: 'seconds',      // 'seconds' | 'frames' — frames is exact; seconds is rounded to whole frames
   fps: 24000 / 1001,            // stored exact; the UI shows the nominal label (23.976, 29.97, ...)
-  speedRatio: 1.0,
+  speedRatio: 0.7,              // exec speed ÷ producer speed (0.7 = execs linger a little longer)
   endBehavior: 'scrollOff',     // 'scrollOff' | 'stopAtEnd'
   leadIn: 'locked',             // 'locked' | 'scrollIn'
-  startHoldFrames: 0,           // frames the scroll stays frozen at the start (the clock keeps ticking)
-  loadInFrames: 0,              // cable-box style staged reveal at the start: background → boxes → text/images (0 = off)
+  startHoldFrames: 24,          // frames the scroll stays frozen at the start (the clock keeps ticking)
+  loadInFrames: 12,             // cable-box style staged reveal at the start: background → boxes → text/images (0 = off)
+  easeInFrames: 36,             // after the hold, accelerate from 0 to full speed over this many frames (0 = jump straight to speed)
+  easeInCurve: 'sine',          // see EASE_CURVES
+  sectionEaseFrames: 48,        // glide between the exec and producer speeds over this many frames, centred on the section boundary
+  sectionEaseCurve: 'sine',
+  scrollMotion: 'pixel',        // 'pixel': rows on whole pixels (crisp) | 'subpixel': rows blended between pixels (even glide)
   // grid
   seed: 1,
   channelStart: 2,
@@ -1378,25 +1469,94 @@ function computeTiming(layout, config, skin) {
   else if (execSec) boundaryS = sEnd;
   else boundaryS = sStart;
 
-  // Hold: the scroll stays at sStart for the first startHoldFrames, then the rest of the duration does all the scrolling.
+  // Speed profile (a function of t only): frozen for the hold → ease from 0 up to the exec speed → cruise →
+  // glide to the producer speed (centred on the boundary) → cruise to the end. The two speeds are solved so the
+  // distances come out exactly: s(tExec) = the boundary (producers header locks) and s(total) = the end.
   const fps = +config.fps > 0 ? +config.fps : 30;
   const tHold = clamp((Math.max(0, config.startHoldFrames | 0)) / fps, 0, total * 0.95);
-  const scrollTime = total - tHold;
+  const both = !!(execSec && prodSec);
   const De = boundaryS - sStart;
   const Dp = sEnd - boundaryS;
-  const v = (De / ratio + Dp) / scrollTime;
-  const vExec = ratio * v;
-  const tExec = tHold + (vExec > 0 ? De / vExec : 0);   // when the producers header locks (includes the hold)
+  // One section only: one speed, all of the distance on the "first" leg.
+  const r = both ? ratio : 1;
+  const dA = both ? De : De + Dp, dB = both ? Dp : 0;
+  const c1 = easeCurve(config.easeInCurve), c2 = easeCurve(config.sectionEaseCurve);
+  let R1 = Math.max(0, +config.easeInFrames || 0) / fps;
+  let R2 = both ? Math.max(0, +config.sectionEaseFrames || 0) / fps : 0;
+  let sol = null;
+  for (let tries = 0; tries < 80; tries++) {
+    sol = solveSpeeds(dA, dB, r, total, tHold, R1, R2, c1, c2);
+    if (sol.ok) break;
+    R1 *= 0.8; R2 *= 0.8;                       // ramps longer than the time available: shorten them until they fit
+    if (tries === 79) { R1 = 0; R2 = 0; sol = solveSpeeds(dA, dB, r, total, tHold, 0, 0, c1, c2); }
+  }
+  const v = sol.v, vExec = r * v;
+  const t1 = tHold + R1, tB = both ? sol.tB : total, t2 = tB - R2 / 2, t3 = tB + R2 / 2;
+  const s1 = sStart + vExec * R1 * c1.F(1);
+  const s2 = s1 + vExec * Math.max(0, t2 - t1);
+  const s3 = s2 + R2 * (vExec + (v - vExec) * c2.F(1));
+  const tExec = both ? tB : execSec ? total : 0;  // when the producers header locks (includes the hold)
   const tProd = total - tExec;
-  return { sStart, sEnd, boundaryS, De, Dp, v, vExec, tHold, tExec, tProd, total };
+  return {
+    sStart, sEnd, boundaryS, De, Dp, v, vExec, tHold, tExec, tProd, total,
+    ease: { R1, R2, t1, t2, t3, s1, s2, s3, c1: c1.id, c2: c2.id, inCurve: c1, changeCurve: c2 },
+  };
+}
+
+/**
+ * Easing curves for the speed ramps: f(x) is the fraction of the speed change done at x ∈ [0,1], F(x) = ∫₀ˣ f
+ * (the distance covered, in closed form, so s(t) stays exact).
+ */
+const EASE_CURVES = {
+  sine:     { f: (x) => (1 - Math.cos(Math.PI * x)) / 2, F: (x) => x / 2 - Math.sin(Math.PI * x) / (2 * Math.PI) },
+  smooth:   { f: (x) => x * x * (3 - 2 * x),               F: (x) => x ** 3 - x ** 4 / 2 },
+  smoother: { f: (x) => x ** 3 * (x * (6 * x - 15) + 10),  F: (x) => x ** 6 - 3 * x ** 5 + 2.5 * x ** 4 },
+  easeIn:   { f: (x) => x * x,                             F: (x) => x ** 3 / 3 },
+  easeOut:  { f: (x) => 1 - (1 - x) * (1 - x),             F: (x) => x * x - x ** 3 / 3 },
+  linear:   { f: (x) => x,                                 F: (x) => x * x / 2 },
+};
+function easeCurve(id) { const c = EASE_CURVES[id] || EASE_CURVES.sine; return { id: EASE_CURVES[id] ? id : 'sine', ...c }; }
+
+/**
+ * Solve the producer speed v (exec speed = r·v) and the boundary time tB so that, with a ramp of R1 s after the hold
+ * and a speed change of R2 s centred on tB, the exec leg covers dA and the producer leg covers dB in `total` seconds.
+ * Both distances are linear in v once tB is fixed, which gives a closed form (no ramps: v = (dA/r + dB) / (total − hold)).
+ */
+function solveSpeeds(dA, dB, r, total, tHold, R1, R2, c1, c2) {
+  const A1 = c1.F(1), B1 = c2.F(0.5), B2 = c2.F(1) - B1;
+  const k1 = r * R1 * A1 - r * (tHold + R1 + R2 / 2) + R2 * (0.5 * r + (1 - r) * B1);   // dA / v = r·tB + k1
+  const k2 = R2 * (0.5 * r + (1 - r) * B2) + total - R2 / 2;                            // dB / v = k2 − tB
+  const v = (dA + r * dB) / (r * k2 + k1);
+  const tB = v > 0 ? k2 - dB / v : total;
+  const ok = Number.isFinite(v) && v > 0 && tB - R2 / 2 >= tHold + R1 - 1e-9 && tB + R2 / 2 <= total + 1e-9;
+  return { v: Number.isFinite(v) && v > 0 ? v : 0, tB, ok: ok || (dA + dB <= 0) };
 }
 
 function scrollAt(timing, t) {
   t = clamp(t, 0, timing.total);
-  const tHold = timing.tHold || 0;
-  if (t <= tHold) return timing.sStart;
-  if (t <= timing.tExec) return timing.sStart + timing.vExec * (t - tHold);
-  return timing.boundaryS + timing.v * (t - timing.tExec);
+  const e = timing.ease;
+  if (!e) {   // timing objects from before easing existed
+    const tHold = timing.tHold || 0;
+    if (t <= tHold) return timing.sStart;
+    if (t <= timing.tExec) return timing.sStart + timing.vExec * (t - tHold);
+    return timing.boundaryS + timing.v * (t - timing.tExec);
+  }
+  const vE = timing.vExec, vP = timing.v;
+  if (t <= timing.tHold) return timing.sStart;
+  if (t < e.t1) return timing.sStart + vE * e.R1 * e.inCurve.F((t - timing.tHold) / e.R1);
+  if (t <= e.t2) return e.s1 + vE * (t - e.t1);
+  if (t < e.t3) { const x = (t - e.t2) / e.R2; return e.s2 + e.R2 * (vE * x + (vP - vE) * e.changeCurve.F(x)); }
+  return timing.sEnd - vP * (timing.total - t);   // measured back from the end, so s(total) is exactly sEnd
+}
+
+/** Scroll speed (content px / s) at t — for the readouts. */
+function speedAt(timing, t) {
+  const e = timing.ease, vE = timing.vExec, vP = timing.v;
+  if (!e || t <= timing.tHold) return t <= timing.tHold ? 0 : vE;
+  if (t < e.t1) return vE * e.inCurve.f((t - timing.tHold) / e.R1);
+  if (t <= e.t2) return vE;
+  if (t < e.t3) return vE + (vP - vE) * e.changeCurve.f((t - e.t2) / e.R2);
+  return vP;
 }
 
 // ============================================================================
@@ -1921,36 +2081,71 @@ function drawRow(ctx, skin, row, y, parts) {
   }
 }
 
+/**
+ * The grid at time t. Whole-pixel motion: everything is placed on whole pixels. Sub-pixel motion: everything that's
+ * moving (rows, headers not yet locked or being pushed out, a clock riding with the first header) is drawn on whole
+ * pixels into a layer for the integer part of the scroll, then the layer is stamped at the fractional offset with
+ * smoothing, so rows glide evenly; the locked header and the pinned clock are drawn crisp on top.
+ */
 function drawGrid(ctx, t, reveal) {
   const { layout, skin, timing } = state;
-  const g = skin.gridRect;
+  const g = skin.gridRect, L = g.y;
   const s = scrollAt(timing, t);
+  const sub = state.config.scrollMotion === 'subpixel';
+  const sBase = sub ? Math.floor(s) : s, frac = sub ? s - sBase : 0;
+  const place = (y) => Math.round(y + frac);   // a moving element's whole-pixel position at the integer scroll
   const clockText = clockTextAt(t);
   // Everything on screen, in draw order: rows first, then headers on top, then the pinned clock.
+  // `moving` = goes into the sub-pixel layer.
   const items = [];
   const rows = layout.rows;
-  for (let i = firstVisibleRow(rows, s); i < rows.length && rows[i].y < s + g.h; i++) items.push({ kind: 0, row: rows[i], y: Math.round(g.y + rows[i].y - s) });
+  for (let i = firstVisibleRow(rows, sBase); i < rows.length && rows[i].y < sBase + g.h + 1; i++) items.push({ kind: 0, row: rows[i], y: Math.round(g.y + rows[i].y - sBase), moving: true });
   const ys = headerPositions(layout, skin, s);
   layout.headers.forEach((h, i) => {
-    const y = Math.round(ys[i]);
-    if (y + h.height <= g.y || y >= g.y + g.h) return;
-    items.push({ kind: 1, header: h, y });
+    const locked = ys[i] === L;
+    const y = locked ? L : sub ? place(ys[i]) : Math.round(ys[i]);
+    if (y + h.height <= g.y || y >= g.y + g.h + 1) return;
+    items.push({ kind: 1, header: h, y, moving: !locked });
   });
-  if (skin.clockMode === 'pinned' && layout.headers.length) items.push({ kind: 2, y: Math.round(Math.max(g.y, ys[0])) });
+  if (skin.clockMode === 'pinned' && layout.headers.length) {
+    const riding = ys[0] > L;   // scroll-in lead-in: the clock rides with the first header until it locks
+    items.push({ kind: 2, y: riding ? (sub ? place(ys[0]) : Math.round(ys[0])) : L, moving: riding });
+  }
   if (reveal) {
     // load-in order: top of the screen first; at the same height the clock, then headers, then rows
     const order = items.slice().sort((a, b) => a.y - b.y || b.kind - a.kind);
     const nBox = Math.floor(reveal.boxes * order.length + 1e-9), nContent = Math.floor(reveal.content * order.length + 1e-9);
     order.forEach((it, i) => { it.parts = { box: i < nBox, content: i < nContent }; });
   }
+  const draw = (c, it) => {
+    if (it.kind === 0) drawRow(c, skin, it.row, it.y, it.parts);
+    else if (it.kind === 1) skin.drawHeader(c, { x: g.x, y: it.y, w: g.w, h: it.header.height }, it.header, clockText, { tier: it.header.section, parts: it.parts });
+    else skin.drawClockBox(c, { x: g.x, y: it.y, w: g.w, h: skin.headerHeight }, clockText, state.clockStyle, { parts: it.parts });
+  };
   ctx.save();
   ctx.beginPath(); ctx.rect(g.x, g.y, g.w, g.h); ctx.clip();
-  for (const it of items) {
-    if (it.kind === 0) drawRow(ctx, skin, it.row, it.y, it.parts);
-    else if (it.kind === 1) skin.drawHeader(ctx, { x: g.x, y: it.y, w: g.w, h: it.header.height }, it.header, clockText, { tier: it.header.section, parts: it.parts });
-    else skin.drawClockBox(ctx, { x: g.x, y: it.y, w: g.w, h: skin.headerHeight }, clockText, state.clockStyle, { parts: it.parts });
+  if (sub) {
+    const layer = gridLayer(g);
+    const lc = layer.getContext('2d');
+    lc.setTransform(1, 0, 0, 1, 0, 0); lc.clearRect(0, 0, layer.width, layer.height);
+    lc.setTransform(1, 0, 0, 1, -g.x, -g.y);
+    for (const it of items) if (it.moving) draw(lc, it);
+    const smoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(layer, g.x, g.y - frac);
+    ctx.imageSmoothingEnabled = smoothing;
+    for (const it of items) if (!it.moving) draw(ctx, it);
+  } else {
+    for (const it of items) draw(ctx, it);
   }
   ctx.restore();
+}
+
+/** Reusable offscreen layer for sub-pixel motion: the grid plus 2 spare pixel rows below. Memoised, so render stays pure. */
+function gridLayer(g) {
+  let c = state.gridLayerCanvas;
+  if (!c || c.width !== g.w || c.height !== g.h + 2) { c = document.createElement('canvas'); c.width = g.w; c.height = g.h + 2; state.gridLayerCanvas = c; }
+  return c;
 }
 
 function render(ctx, t) {
@@ -2016,6 +2211,7 @@ function setTime(t) {
   renderFrame(preview.t);
   el('scrubber').value = frame;
   el('timeReadout').textContent = `t = ${preview.t.toFixed(3)} s · frame ${frame} / ${state.config.totalFrames}`;
+  updatePlayhead();
 }
 
 function stepFrames(n) { pausePreview(); setTime(preview.t + n / state.config.fps); }
@@ -2191,7 +2387,10 @@ function buildLayoutJSON(extra) {
     seed: config.seed,
     settings,
     sections,
-    timing: { totalSeconds: +timing.total.toFixed(6), totalFrames: config.totalFrames, holdSeconds: +timing.tHold.toFixed(4), holdFrames: config.startHoldFrames, loadInFrames: config.loadInFrames, execSeconds: +timing.tExec.toFixed(4), producerSeconds: +timing.tProd.toFixed(4), scrollStart: timing.sStart, scrollEnd: timing.sEnd, sectionBoundaryScroll: timing.boundaryS, contentHeight: layout.contentHeight },
+    timing: { totalSeconds: +timing.total.toFixed(6), totalFrames: config.totalFrames, holdSeconds: +timing.tHold.toFixed(4), holdFrames: config.startHoldFrames, loadInFrames: config.loadInFrames,
+      easeIn: { seconds: +timing.ease.R1.toFixed(4), curve: timing.ease.c1, endsAt: +timing.ease.t1.toFixed(4) },
+      speedChange: { seconds: +timing.ease.R2.toFixed(4), curve: timing.ease.c2, from: +timing.ease.t2.toFixed(4), to: +timing.ease.t3.toFixed(4) },
+      scrollMotion: config.scrollMotion, execSeconds: +timing.tExec.toFixed(4), producerSeconds: +timing.tProd.toFixed(4), scrollStart: timing.sStart, scrollEnd: timing.sEnd, sectionBoundaryScroll: timing.boundaryS, contentHeight: layout.contentHeight },
     headers: layout.headers.map((h) => ({ kind: h.kind, section: h.section, title: h.title.text, contentY: h.naturalY, height: h.height, style: { name: h.style.name, fill: h.style.fill, light: h.style.light, dark: h.style.dark, textColor: h.style.textColor, clockFill: h.style.clockFill, clockColor: h.style.clockColor }, blockId: h.blockId || null })),
     blocks: {
       fixed: config.fixedBlocks,
@@ -2579,6 +2778,7 @@ async function rebuild() {
   updatePacingReadout();
   updateStats();
   updateFontPxHints();
+  renderTimeline();
   updateNameCounts();
   setTime(preview.t);
   if (bannerLib.editingId) renderBannerPreview();
@@ -2605,6 +2805,7 @@ function updatePacingReadout() {
     const duration = isExec ? timing.tExec : timing.tProd;
     const rowsPerSec = speed / skin.rowHeight;
     const tr = document.createElement('tr');
+    tr.className = s.key;
     tr.innerHTML = `<td>${s.title}</td><td>${s.nameCount}</td><td>${s.rowCount}</td><td>${s.bannerCount}</td>` +
       `<td>${formatDuration(duration)} (${fmt(duration, 1)} s)</td><td>${fmt(rowsPerSec)}</td><td>${fmt(rowsPerSec * s.namesPerRow)}</td>` +
       `<td>${fmt(skin.rowHeight / speed)}</td><td>${fmt((skin.gridRect.h - skin.headerHeight) / speed, 1)} s</td>`;
@@ -2630,6 +2831,11 @@ function updateStats() {
     ['Content height', `${layout.contentHeight} px · ${layout.rows.length} rows total`],
     ['Section boundary', layout.sections.length > 1 ? `t = ${timing.tExec.toFixed(3)} s` : '—'],
     ['Start', `hold ${config.startHoldFrames} f (${timing.tHold.toFixed(3)} s) · load-in ${config.loadInFrames ? config.loadInFrames + ' f' : 'off'} · ${layout.headers.length} headers in the content`],
+    ['Easing', (() => {
+      const e = timing.ease, f = (sec) => Math.round(sec * config.fps);
+      const shrunk = (want, got) => (want > 0 && f(got) < want ? ` <span style="color:var(--danger)">(shortened from ${want} f to fit)</span>` : '');
+      return `ease-in ${f(e.R1)} f ${e.c1}${shrunk(config.easeInFrames, e.R1)} · speed change ${layout.sections.length > 1 ? `${f(e.R2)} f ${e.c2}${shrunk(config.sectionEaseFrames, e.R2)}, ${timing.tExec >= e.R2 / 2 ? `t ${(timing.tExec - e.R2 / 2).toFixed(2)}–${(timing.tExec + e.R2 / 2).toFixed(2)} s` : ''}` : 'n/a (one section)'} · cruise ${(timing.vExec * state.pxScale.y / config.fps).toFixed(2)} → ${(timing.v * state.pxScale.y / config.fps).toFixed(2)} output px/frame · ${config.scrollMotion === 'subpixel' ? 'sub-pixel motion' : 'whole-pixel motion'}`;
+    })()],
     ['Bitrate', `${(resolveBitrate(config, outputCanvas.width, outputCanvas.height) / 1e6).toFixed(0)} Mbps${config.bitrateMbps > 0 ? '' : ' (auto)'}`],
   ];
   el('statsList').innerHTML = items.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
@@ -3245,6 +3451,157 @@ function loadTestData() {
   scheduleRebuild();
 }
 
+// ---- collapsible panel sections (click a heading; remembered in this browser) ----
+const COLLAPSED_KEY = 'tvguide-credits.collapsedSections';
+function sectionKey(fs) { return fs.querySelector(':scope > legend').textContent.trim(); }
+function bindCollapsibleSections() {
+  let collapsed = [];
+  try { collapsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]'); } catch (e) { /* none */ }
+  for (const fs of document.querySelectorAll('.controls > fieldset')) {
+    if (collapsed.includes(sectionKey(fs))) fs.classList.add('collapsed');
+    fs.querySelector(':scope > legend').addEventListener('click', () => {
+      fs.classList.toggle('collapsed');
+      const keys = [...document.querySelectorAll('.controls > fieldset.collapsed')].map(sectionKey);
+      try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(keys)); } catch (e) { /* fine */ }
+    });
+  }
+}
+/** Open the section containing el (if collapsed), scroll it into view and flash it. */
+function revealInPanel(node) {
+  const fs = node.closest('fieldset'); if (fs) fs.classList.remove('collapsed');
+  node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  node.classList.remove('flash'); void node.offsetWidth; node.classList.add('flash');
+}
+
+// ---- timeline: hold / ease / exec / speed change / producers, banner flags, draggable split ----
+
+/** The t at which the scroll reaches s (s(t) never decreases, so bisect). */
+function timeAtScroll(timing, sTarget) {
+  let lo = 0, hi = timing.total;
+  if (sTarget <= scrollAt(timing, 0)) return 0;
+  if (sTarget >= scrollAt(timing, hi)) return hi;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (scrollAt(timing, mid) < sTarget) lo = mid; else hi = mid; }
+  return hi;
+}
+/** Every banner row and block header with the moment it's best seen: banners centred under the locked header, headers as they lock. */
+function timelineMarkers() {
+  const { layout, skin, timing } = state;
+  const view = skin.gridRect.h - skin.headerHeight;
+  const marks = [];
+  for (const r of layout.rows) {
+    if (r.type !== 'banner') continue;
+    const sTarget = r.y + r.height / 2 - (skin.headerHeight + view / 2);
+    marks.push({ kind: 'banner', t: timeAtScroll(timing, sTarget), color: r.banner.preset.fill || '#182080', label: r.presetName, presetId: r.presetId, blockId: r.blockId });
+  }
+  for (const h of layout.headers) {
+    if (h.kind !== 'block' && h.kind !== 'opening') continue;
+    marks.push({ kind: 'block', t: timeAtScroll(timing, h.naturalY), color: h.style.fill || '#3b48b3', label: h.kind === 'opening' ? `Opening header: ${h.title.text}` : `Block header: ${h.title.text}`, blockId: h.blockId || null, opening: h.kind === 'opening' });
+  }
+  return marks;
+}
+const tlPct = (t) => `${(100 * clamp(t / state.timing.total, 0, 1)).toFixed(4)}%`;
+
+function renderTimeline() {
+  const track = el('tlTrack'), flags = el('tlFlags');
+  if (!state.timing || !track) return;
+  const { timing, layout, config } = state;
+  const e = timing.ease, both = layout.sections.length > 1;
+  const hasExec = layout.sections.some((x) => x.key === 'exec');
+  // segment backgrounds first, then the ease shading, then the labels on top of both
+  const labels = [];
+  const seg = (cls, t0, t1, label) => {
+    if (!(t1 > t0)) return '';
+    const box = `left:${tlPct(t0)};width:calc(${tlPct(t1)} - ${tlPct(t0)})`;
+    if (label) labels.push(`<div class="tl-seg tl-label" style="${box}">${label}</div>`);
+    return `<div class="tl-seg ${cls}" style="${box}"></div>`;
+  };
+  const fmt = (sec) => formatDuration(sec);
+  const secA = hasExec ? 'exec' : 'prod';
+  let html = '';
+  html += seg('hold first', 0, timing.tHold, timing.tHold > 0.6 ? 'hold' : '');
+  const aEnd = both ? timing.tExec : timing.total;
+  html += seg(`${secA}${timing.tHold > 0 ? '' : ' first'}${both ? '' : ' last'}`, timing.tHold, aEnd, `${hasExec ? 'executive producers' : 'podcast producers'} · ${fmt(aEnd - (both ? 0 : 0))}`);
+  if (both) html += seg('prod last', timing.tExec, timing.total, `podcast producers · ${fmt(timing.tProd)}`);
+  // ease-in: dark → section colour; speed change: exec colour → producer colour
+  const sc = (k) => `color-mix(in oklab, var(--${k}) ${k === 'exec' ? 62 : 55}%, #1a1a24)`;
+  if (e.R1 > 0) html += `<div class="tl-ramp" title="ease in" style="left:${tlPct(timing.tHold)};width:calc(${tlPct(e.t1)} - ${tlPct(timing.tHold)});background:linear-gradient(90deg, rgba(10,10,15,0.85), rgba(10,10,15,0))"></div>`;
+  if (both && e.R2 > 0) html += `<div class="tl-ramp" title="speed change" style="left:${tlPct(e.t2)};width:calc(${tlPct(e.t3)} - ${tlPct(e.t2)});background:linear-gradient(90deg, ${sc('exec')}, ${sc('prod')})"></div>`;
+  html += labels.join('');
+  if (config.loadInFrames > 0) html += `<div class="tl-loadin" title="load-in" style="left:0;width:${tlPct(config.loadInFrames / config.fps)}"></div>`;
+  if (both) html += `<div class="tl-divider" id="tlDivider" title="Drag to change the exec / producer split (speed ratio ${config.speedRatio.toFixed(2)})" style="left:${tlPct(timing.tExec)}"></div>`;
+  html += `<div class="tl-playhead" id="tlPlayhead" style="left:${tlPct(preview.t)}"></div>`;
+  track.innerHTML = html;
+  // flags
+  flags.innerHTML = '';
+  for (const m of timelineMarkers()) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = `tl-flag${m.kind === 'block' ? ' block' : ''}`;
+    b.style.left = tlPct(m.t); b.style.setProperty('--flag', m.color);
+    b.dataset.tip = `${m.label} · ${m.t.toFixed(1)} s`;
+    b.addEventListener('click', (ev) => { ev.stopPropagation(); jumpToMarker(m); });
+    flags.appendChild(b);
+  }
+  el('tlLegend').innerHTML = `<span class="key"><span class="dot" style="background:var(--hold)"></span>hold ${config.startHoldFrames} f</span>`
+    + `<span class="key"><span class="dot" style="background:var(--yellow)"></span>load-in ${config.loadInFrames} f</span>`
+    + (hasExec ? `<span class="key"><span class="dot" style="background:var(--exec)"></span>exec</span>` : '')
+    + (layout.sections.some((x) => x.key === 'prod') ? `<span class="key"><span class="dot" style="background:var(--prod)"></span>producers</span>` : '')
+    + (both ? `<span class="key">split ×${config.speedRatio.toFixed(2)}</span>` : '');
+}
+function updatePlayhead() { const ph = el('tlPlayhead'); if (ph && state.timing) ph.style.left = tlPct(preview.t); }
+
+function jumpToMarker(m) {
+  pausePreview(); setTime(m.t);
+  if (m.kind === 'banner' && bannerLib.presets.has(m.presetId)) { openBannerEditor(m.presetId); revealInPanel(el('bannerEditor')); }
+  else if (m.blockId && blockLib.presets.has(m.blockId)) { openBlockEditor(m.blockId); revealInPanel(el('blockEditor')); }
+  else if (m.opening) revealInPanel(document.querySelector('[data-setting="openingHeaderText"]').closest('.grid3'));
+}
+
+/** Speed ratio that puts the producers-header lock (tExec) at tTarget: tExec falls as the ratio rises, so bisect (in log space). */
+function ratioForSplit(tTarget) {
+  const { layout, config, skin } = state;
+  let lo = Math.log(0.05), hi = Math.log(20);
+  for (let i = 0; i < 50; i++) {
+    const mid = (lo + hi) / 2;
+    const tm = computeTiming(layout, { ...config, speedRatio: Math.exp(mid) }, skin);
+    if (tm.tExec > tTarget) lo = mid; else hi = mid;
+  }
+  return Math.exp((lo + hi) / 2);
+}
+
+function bindTimeline() {
+  const track = el('tlTrack'), tip = document.createElement('div');
+  tip.className = 'tl-tip'; tip.hidden = true; document.body.appendChild(tip);
+  const tAt = (clientX) => { const r = track.getBoundingClientRect(); return clamp((clientX - r.left) / r.width, 0, 1) * state.timing.total; };
+  let mode = null;
+  track.addEventListener('pointerdown', (ev) => {
+    if (!state.timing || state.exporting) return;
+    mode = ev.target.id === 'tlDivider' ? 'split' : 'seek';
+    track.setPointerCapture(ev.pointerId);
+    if (mode === 'seek') { pausePreview(); setTime(tAt(ev.clientX)); }
+    else el('tlDivider').classList.add('dragging');
+  });
+  track.addEventListener('pointermove', (ev) => {
+    if (!mode) return;
+    if (mode === 'seek') { setTime(tAt(ev.clientX)); return; }
+    // drag the split: re-solve the timing live (layout unchanged), the full rebuild happens on release
+    const e = state.timing.ease;
+    const t = clamp(tAt(ev.clientX), state.timing.tHold + e.R1 + e.R2 / 2 + 0.25, state.timing.total - e.R2 / 2 - 0.25);
+    const ratio = Math.round(ratioForSplit(t) * 100) / 100;
+    if (ratio === state.config.speedRatio) return;
+    state.config.speedRatio = ratio;
+    document.querySelector('[data-setting="speedRatio"]').value = ratio;
+    state.timing = computeTiming(state.layout, state.config, state.skin);
+    renderTimeline(); el('tlDivider').classList.add('dragging');
+    updatePacingReadout(); setTime(preview.t);
+    tip.hidden = false; tip.textContent = `split ×${ratio.toFixed(2)} · producers from ${state.timing.tExec.toFixed(1)} s`; tip.style.left = `${ev.clientX + 12}px`; tip.style.top = `${ev.clientY - 34}px`;
+  });
+  const end = () => { if (mode === 'split') { tip.hidden = true; scheduleRebuild(); } mode = null; };
+  track.addEventListener('pointerup', end); track.addEventListener('pointercancel', end);
+  // flag tooltips
+  el('tlFlags').addEventListener('pointerover', (ev) => { const f = ev.target.closest('.tl-flag'); if (!f) return; tip.hidden = false; tip.textContent = f.dataset.tip; const r = f.getBoundingClientRect(); tip.style.left = `${r.left}px`; tip.style.top = `${r.top - 34}px`; });
+  el('tlFlags').addEventListener('pointerout', (ev) => { if (ev.target.closest('.tl-flag') && mode !== 'split') tip.hidden = true; });
+}
+
 // ---- preview zoom: Fit, or an exact size where 100% = one output pixel per physical screen pixel ----
 const PREVIEW_ZOOM_KEY = 'tvguide-credits.previewZoom';
 const previewWrap = () => document.querySelector('.canvas-wrap');
@@ -3293,8 +3650,8 @@ function stepPreviewZoom(dir) {
 }
 function bindPreviewZoom() {
   const sel = el('previewZoom'), wrap = previewWrap();
-  let saved = 'fit';
-  try { saved = localStorage.getItem(PREVIEW_ZOOM_KEY) || 'fit'; } catch (e) { /* default */ }
+  let saved = '100';   // default: 100% (one output pixel per screen pixel)
+  try { saved = localStorage.getItem(PREVIEW_ZOOM_KEY) || '100'; } catch (e) { /* default */ }
   if ([...sel.options].some((o) => o.value === saved)) sel.value = saved;
   sel.addEventListener('change', () => setPreviewZoom(sel.value));
   window.addEventListener('resize', applyPreviewZoom);   // also fires on browser zoom / moving to a screen with a different pixel density
@@ -3365,6 +3722,8 @@ function bindSidebarResizer() {
 }
 
 function bindUI() {
+  bindCollapsibleSections();
+  bindTimeline();
   for (const sel of document.querySelectorAll('.res-select')) sel.addEventListener('input', syncResCustomFields);
   el('btnPixelFontSetup').addEventListener('click', pixelFontSetup);
   bindFontSelectArrows();
@@ -3500,7 +3859,7 @@ async function init() {
 init().catch((e) => { console.error(e); setExportStatus(`Startup error: ${e.message}`, 'error'); });
 
 // Exposed for automated verification (see README > Testing); not used by the UI.
-window.__tvguide = { headerLib, blockLib, libPersist, libDelete, newHeaderStyle, newBlock, setFixedBlocks, resolveBlocks, loadInAt, clearTextCache, getTextImage, measureTextWidth, state, render, renderFrame, rebuild, scrollAt, fpsEntry, resolveBitrate, resolveVideoFill, bannerLib, newBannerPreset, persistBannerPreset, deleteBannerPreset, setBannerQueue, bannerLibraryJSON, importBannerLibrary, makeBannerRow, ensureBannerImages, openBannerEditor, resetLook, LOOK_KEYS, headerPositions, buildLayout, fontLib, addFontFiles, syncFolderFonts, resolveFontRoles, computeTiming, createGreyboxSkin, fitText, setTime, exportMP4, exportPNGSequence, exportState, chooseEncoderConfig, pickAvcLevel, loadTestData, generateTestData, parseCSV, loadCSVText, csvSelection, DEFAULTS };
+window.__tvguide = { speedAt, solveSpeeds, EASE_CURVES, headerLib, blockLib, libPersist, libDelete, newHeaderStyle, newBlock, setFixedBlocks, resolveBlocks, loadInAt, clearTextCache, getTextImage, measureTextWidth, state, render, renderFrame, rebuild, scrollAt, fpsEntry, resolveBitrate, resolveVideoFill, bannerLib, newBannerPreset, persistBannerPreset, deleteBannerPreset, setBannerQueue, bannerLibraryJSON, importBannerLibrary, makeBannerRow, ensureBannerImages, openBannerEditor, resetLook, LOOK_KEYS, headerPositions, buildLayout, fontLib, addFontFiles, syncFolderFonts, resolveFontRoles, computeTiming, createGreyboxSkin, fitText, setTime, exportMP4, exportPNGSequence, exportState, chooseEncoderConfig, pickAvcLevel, loadTestData, generateTestData, parseCSV, loadCSVText, csvSelection, DEFAULTS };
 </script>
 </body>
 </html>

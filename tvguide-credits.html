@@ -443,6 +443,12 @@
         <tr><td>Promo accent</td><td></td><td></td><td></td><td><input type="color" data-setting="colPromoAccent" title="promo other lines"></td></tr>
       </tbody>
     </table>
+    <div class="grid3 topbg-chooser">
+      <div><input type="hidden" data-setting="topBgImage"><label><span>Top background image</span></label><div class="row" style="gap:4px"><label class="sm-btn">Choose image…<input type="file" accept="image/*" data-action="topbg-file" hidden></label><button type="button" class="sm" data-action="topbg-remove">Remove</button></div><div class="hint mono topbg-info">none: blue gradient</div></div>
+      <label><span>Image fit</span><select data-setting="topBgFit"><option value="cover">cover (fill, crop edges)</option><option value="contain">contain (whole image)</option><option value="stretch">stretch</option></select></label>
+      <label><span>Darken image %</span><input type="number" data-setting="topBgDim" min="0" max="90" step="5"></label>
+    </div>
+    <div class="hint">The image replaces the blue gradient above the header bar (behind the video window and promo panel). With "contain", the gradient shows around it. Saved in this browser; included in exported themes when "include banners…" is ticked.</div>
     <div class="hint">Header bars take their colours from header styles (Headers panel), banner boxes from each banner preset. The bevel is the light top-left / dark bottom-right edge, the same size on every box.</div>
   </fieldset>
 
@@ -624,6 +630,9 @@ const DEFAULTS = {
   colCellFill: '#0c1359', colCellLight: '#5c69c9', colCellDark: '#040826', colCellText: '#f4f4f4',      // producers
   colTileFill: '#05083a', colTileLight: '#3a45a0', colTileDark: '#02041c', colTileText: '#ffe94a',      // producers
   colPromoText: '#ffffff', colPromoAccent: '#ffe94a',
+  topBgImage: '',               // id of an image in the image store ('' = the blue gradient) behind the video window & promo panel
+  topBgFit: 'cover',            // 'cover' | 'contain' | 'stretch'
+  topBgDim: 0,                  // darken the image this many % (keeps the promo text readable)
   // text rendering
   textRender: 'pixel',          // 'smooth' (anti-aliased) | 'pixel' (no anti-aliasing, hard edges)
   textPixelScale: 1,            // pixel mode: draw text N× smaller, then blow it up with hard pixels
@@ -904,10 +913,10 @@ function openAppDB() {
   appDBPromise = new Promise((resolve) => {
     if (typeof indexedDB === 'undefined') return resolve(null);
     let req;
-    try { req = indexedDB.open(BANNER_DB_NAME, 3); } catch (e) { return resolve(null); }
+    try { req = indexedDB.open(BANNER_DB_NAME, 4); } catch (e) { return resolve(null); }
     req.onupgradeneeded = () => {
       const db = req.result;
-      for (const store of [BANNER_STORE, FONT_STORE, HEADER_STORE, BLOCK_STORE]) {
+      for (const store of [BANNER_STORE, FONT_STORE, HEADER_STORE, BLOCK_STORE, IMAGE_STORE]) {
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' });
       }
     };
@@ -1008,6 +1017,19 @@ function newBlock(overrides) {
 }
 const headerLib = createLibrary(HEADER_STORE, 'tvguide-credits.headerPresets.v1', newHeaderStyle);
 const blockLib = createLibrary(BLOCK_STORE, 'tvguide-credits.blocks.v1', newBlock);
+// Background images (so far: the top-area image). { id, name, dataUrl }; decoded before layout like banner images.
+const IMAGE_STORE = 'images';
+const imageLib = createLibrary(IMAGE_STORE, 'tvguide-credits.images.v1', (o) => ({ id: `img-${Date.now().toString(36)}`, name: 'image', dataUrl: '', ...o }));
+const decodedImages = new Map();   // id → { src, img }
+async function decodeLibraryImage(id) {
+  const rec = id ? imageLib.presets.get(id) : null;
+  if (!rec || !rec.dataUrl) return null;
+  const cached = decodedImages.get(id);
+  if (cached && cached.src === rec.dataUrl) return cached.img;
+  const img = new Image(); img.src = rec.dataUrl;
+  try { await img.decode(); decodedImages.set(id, { src: rec.dataUrl, img }); return img; }
+  catch (e) { console.warn('Image failed to decode:', rec.name, e); return null; }
+}
 const DEFAULT_HEADER_STYLES = [
   { id: 'default-header', name: 'Blue (time bar)', textColor: '#ffe94a' },   // yellow titles, like the reference time slots
   { id: 'default-header-grey', name: 'Grey (promo bar)', fill: '#77777a', light: '#c4c4c8', dark: '#2e2e33', textColor: '#ffe94a', clockFill: '#2b3aa8', clockColor: '#ffffff' },
@@ -1977,6 +1999,12 @@ function createGreyboxSkin(W, H, options = {}) {
         const g = x.createLinearGradient(0, 0, 0, H);
         g.addColorStop(0, colors.bgTop); g.addColorStop(1, colors.bgBottom);
         x.fillStyle = g; x.fillRect(0, 0, W, H);
+        if (options.topBgImage) {   // custom image above the header bar instead of the gradient
+          const top = { x: 0, y: 0, w: W, h: this.gridRect.y };
+          drawImageFit(x, options.topBgImage, top, options.topBgFit || 'cover', stretch);
+          const dim = clamp(+options.topBgDim || 0, 0, 95) / 100;
+          if (dim > 0) { x.fillStyle = `rgba(0,0,0,${dim})`; x.fillRect(top.x, top.y, top.w, top.h); }
+        }
         x.fillStyle = colors.grid; x.fillRect(this.gridRect.x, this.gridRect.y, this.gridRect.w, this.gridRect.h);
         this._bg = c;
       }
@@ -2624,6 +2652,34 @@ function refreshMirrors() {
   for (const m of document.querySelectorAll('[data-setting][data-mirror]')) { const p = primaryInput(m.dataset.setting); if (p) copyInputValue(p, m); }
   syncFxFields();
 }
+/** Top background image: choose / remove (delegated so the copy in the "by part" view works as well). */
+async function topBgChosen(file) {
+  if (!file) return;
+  if (file.size > 20 * 1024 * 1024) { setExportStatus('That image is over 20 MB: please use a smaller one (the top area is at most 3328 px wide).', 'error'); return; }
+  const rec = imageLib.make({ name: file.name, dataUrl: await readFileAsDataURL(file) });
+  await libPersist(imageLib, rec);
+  const prev = readSettingsFromUI().topBgImage;
+  setSettingValue('topBgImage', rec.id);
+  if (prev && prev !== rec.id) await libDelete(imageLib, prev);   // one top image at a time
+  updateTopBgInfo(); scheduleRebuild();
+}
+async function topBgRemoved() {
+  const prev = readSettingsFromUI().topBgImage;
+  setSettingValue('topBgImage', '');
+  if (prev) await libDelete(imageLib, prev);
+  updateTopBgInfo(); scheduleRebuild();
+}
+function updateTopBgInfo() {
+  const id = (primaryInput('topBgImage') || {}).value || '';
+  const rec = id ? imageLib.presets.get(id) : null;
+  const text = rec ? `${rec.name} · ${Math.round((rec.dataUrl.length * 0.75) / 1024)} KB` : id ? `⚠ image not in this browser (${id}): using the gradient` : 'none: blue gradient';
+  for (const n of document.querySelectorAll('.topbg-info')) n.textContent = text;
+}
+function bindTopBg() {
+  document.addEventListener('change', (e) => { if (e.target.dataset && e.target.dataset.action === 'topbg-file') { const f = e.target.files[0]; e.target.value = ''; topBgChosen(f); } });
+  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-action="topbg-remove"]')) topBgRemoved(); });
+}
+
 /** Shadow / stroke value fields dim while their switch is off. */
 function syncFxFields() {
   for (const f of document.querySelectorAll('.fx-fields')) { const sw = primaryInput(f.dataset.fx); f.classList.toggle('off', !!sw && !sw.checked); }
@@ -2714,6 +2770,7 @@ function buildTheme(cfg, includeLibrary) {
     tool: 'tvguide-credits', kind: 'theme', version: 1, exportedAt: new Date().toISOString(),
     settings: themeSettings(cfg),
     library: includeLibrary ? bannerLibraryJSON(cfg.bannerQueue, cfg.fixedBlocks) : null,
+    images: includeLibrary && cfg.topBgImage && imageLib.presets.has(cfg.topBgImage) ? [imageLib.presets.get(cfg.topBgImage)] : [],
   };
 }
 /** Apply a theme: its settings replace the current ones (patron lists stay), its library is merged in first so ids resolve. */
@@ -2723,6 +2780,7 @@ async function applyTheme(theme) {
     await importBannerLibrary(theme.library);
     renderBannerLibrary(); renderHeaderLibrary(); renderBlockLibrary();
   }
+  for (const img of theme.images || []) if (img && img.id && img.dataUrl) await libPersist(imageLib, imageLib.make(img));
   const current = readSettingsFromUI();
   const settings = {};
   for (const [k, v] of Object.entries(theme.settings)) if (k in DEFAULTS && !THEME_EXCLUDE.has(k)) settings[k] = v;
@@ -2841,7 +2899,9 @@ async function rebuild() {
     pxScale = { x: k, y: k }; outputAspect = internal.w / internal.h; snapped = true;
   }
   const fontRoles = resolveFontRoles(cfg);
+  const topBgImage = await decodeLibraryImage(cfg.topBgImage);   // decoded before anything is drawn, like banner images
   const skin = createGreyboxSkin(internal.w, internal.h, {
+    topBgImage, topBgFit: cfg.topBgFit, topBgDim: cfg.topBgDim,
     videoAspect: cfg.videoAspect, outputAspect, designScale: cfg.designScale, topArea: cfg.topArea, videoWindowStyle: cfg.videoWindowStyle, videoFill: resolveVideoFill(cfg),
     look: cfg, fontRoles, textStyles: resolveTextStyles(cfg), textRender: cfg.textRender, textPixelScale: cfg.textPixelScale, clockMode: cfg.clockMode, minFontScale: cfg.minFontScale,
   });
@@ -2886,6 +2946,7 @@ async function rebuild() {
   updateFontPxHints();
   renderTimeline();
   refreshMirrors();
+  updateTopBgInfo();
   updateNameCounts();
   setTime(preview.t);
   if (bannerLib.editingId) renderBannerPreview();
@@ -3650,7 +3711,7 @@ const PARTS = [
     fonts: ['Header', 'Clock'], roles: ['Header', 'Clock'], jump: ['Headers', 'Header styles (colours) and the opening header live in Headers'] },
   { title: 'Banners', tint: '#ffd24a', keys: ['bannerHeightPx'], fonts: ['Banner'], roles: ['Banner'], jump: ['Banners &', 'Banner presets, blocks and the queue live in Banners & blocks'] },
   { title: 'Promo panel', tint: '#ff9f45', keys: ['promosText', 'promoIntervalSeconds', 'colPromoText', 'colPromoAccent'], fonts: ['Promo'], roles: ['Promo'] },
-  { title: 'Boxes & background', tint: '#2fd1a6', keys: ['bevelPx', 'gapPx', 'rowHeightPx', 'colGrid', 'colBgTop', 'colBgBottom', 'textRender', 'textPixelScale'] },
+  { title: 'Boxes & background', tint: '#2fd1a6', keys: ['bevelPx', 'gapPx', 'rowHeightPx', 'colGrid', 'colBgTop', 'colBgBottom', 'textRender', 'textPixelScale'], extra: ['.topbg-chooser'] },
   { title: 'Motion & timing', tint: '#5b8cff', keys: ['duration', 'fps', 'speedRatio', 'endBehavior', 'leadIn', 'startHoldFrames', 'loadInFrames', 'easeInFrames', 'easeInCurve', 'sectionEaseFrames', 'sectionEaseCurve', 'scrollMotion'] },
   { title: 'Output', tint: '#ff5d5d', keys: ['outputRes', 'internalRes', 'upscaleMode', 'pixelSnap', 'videoAspect', 'exportRegion', 'topArea', 'videoWindowStyle', 'videoFill', 'videoFillCustom', 'bitrateMbps', 'designScale'] },
 ];
@@ -3707,6 +3768,7 @@ function buildPartsView() {
       const d = primaryInput('txAlignH' + key).closest('details');
       const c = mirrorClone(d); c.open = false; fs.appendChild(c);
     }
+    for (const sel of part.extra || []) { const n = document.querySelector(`.controls > fieldset ${sel}`); if (n) fs.appendChild(mirrorClone(n)); }
     if (part.note) { const n = document.createElement('div'); n.className = 'hint'; n.textContent = part.note; fs.appendChild(n); }
     if (part.jump) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'sm part-jump'; b.textContent = `${part.jump[1]} →`;
@@ -3970,6 +4032,7 @@ function bindSidebarResizer() {
 
 function bindUI() {
   bindCollapsibleSections();
+  bindTopBg();
   bindPanelNav();
   bindTimeline();
   for (const sel of document.querySelectorAll('.res-select')) sel.addEventListener('input', syncResCustomFields);
@@ -4078,6 +4141,7 @@ async function init() {
   await libLoad(headerLib);
   await ensureDefaultHeaderStyles(true, loadRawSettings());
   await libLoad(blockLib);
+  await libLoad(imageLib);
   await ensureDefaultBlocks(true);
   writeSettingsToUI(saved || effectiveDefaults());
   bindUI();

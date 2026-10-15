@@ -1,0 +1,12 @@
+{
+  "name": "tvguide-credits-test",
+  "private": true,
+  "type": "module",
+  "description": "Headless verification of tvguide-credits.html (dev only; the tool itself has no dependencies).",
+  "scripts": {
+    "test": "node verify.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.0.0"
+  }
+}

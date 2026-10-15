@@ -1,0 +1,17 @@
+.DS_Store
+._*
+node_modules/
+*.mp4
+*.layout.json
+frames/
+test/out/
+
+# Reference captures (TV Guide Channel screenshots) stay local
+refs/
+
+# Font files stay local (many are commercial). The Prevue fonts ship inside bundled-fonts.js (see tools/bundle-fonts.mjs).
+assets/fonts/*
+!assets/fonts/bundled-fonts.js
+
+# Patreon member exports contain personal data: never commit them
+*.csv

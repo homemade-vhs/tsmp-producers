@@ -7,6 +7,12 @@ Renders the podcast's Patreon credits as a late-90s cable "TV Guide Channel" lis
 - `assets/` — `fonts/` holds font files (see Fonts below). Later: PNGs, `manifest.json`.
 - `test/` — optional headless verification (needs Node; the tool itself needs nothing).
 
+## Online
+
+**https://homemade-vhs.github.io/tsmp-producers/**: the same tool, hosted on GitHub Pages (repo `homemade-vhs/tsmp-producers`, public). Open it in Chrome or Edge from anywhere; nothing to install. Everything runs in your browser: patron names, settings and your banner/font libraries are stored in *your* browser only and are never uploaded. Each browser (and the online copy vs. a copy opened from disk) keeps its own settings, so use **Export theme / Import theme** to share a look between editors.
+
+**Publishing changes:** commit and push to `main`; Pages rebuilds in a minute or two. Not in the repo (see `.gitignore`): `refs/`, the font folders (the Prevue fonts ship inside `assets/fonts/bundled-fonts.js`), exported videos/JSON, and **any `.csv`**: Patreon member exports contain personal data and must never be committed.
+
 ## Run
 
 Open `tvguide-credits.html` in **Chrome or Edge**. Double-clicking the file works: over `file://` Chrome treats the page as a secure context, so WebCodecs, `showSaveFilePicker` and `showDirectoryPicker` are all available (verified in Chrome 153 and headless Chrome for Testing). Firefox and Safari lack WebCodecs encoding and the file pickers, so exports won't work there.

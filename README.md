@@ -5,6 +5,7 @@ Renders the podcast's Patreon credits as a late-90s cable "TV Guide Channel" lis
 - `tvguide-credits.html` — the whole tool. Vanilla HTML/CSS/JS, no build step.
 - `lib/` — vendored [Mediabunny](https://mediabunny.dev) (MP4 muxer + WebCodecs plumbing, see `lib/README.md`) and the panel's UI font, Plus Jakarta Sans (`lib/ui-font.js`, SIL OFL: `lib/fonts/PlusJakartaSans-OFL.txt`).
 - `assets/` — `fonts/` holds font files (see Fonts below). Later: PNGs, `manifest.json`.
+- `templates/` — 1:1 design templates (blank / guides / overlay PNGs) for the top background and banner images at the default size; see `templates/README.md`.
 - `test/` — optional headless verification (needs Node; the tool itself needs nothing).
 
 ## Online

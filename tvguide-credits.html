@@ -398,8 +398,8 @@
         <label><span>Font size %</span><input type="number" id="bp-fontSize" min="25" max="400" step="5"></label>
       </div>
       <div class="grid3">
-        <label><span>Image</span><div class="row" style="gap:4px"><label class="sm-btn">Choose…<input type="file" id="bp-imageFile" accept="image/*" hidden></label><button id="bp-imageRemove" class="sm">Remove</button></div><span class="hint mono" id="bp-imageInfo"></span></label>
-        <label><span>Image fit</span><select id="bp-imageFit"><option value="contain">contain (letterbox)</option><option value="cover">cover (crop)</option><option value="stretch">stretch</option></select></label>
+        <label><span>Image</span><div class="row" style="gap:4px"><label class="sm-btn">Choose…<input type="file" id="bp-imageFile" accept="image/*" hidden></label><button id="bp-imageRemove" class="sm">Remove</button></div><span class="hint mono" id="bp-imageInfo"></span><span class="hint mono" id="bp-imageSize"></span></label>
+        <label><span>Image fit</span><select id="bp-imageFit"><option value="contain">contain (letterbox)</option><option value="cover">cover (crop)</option><option value="stretch">stretch</option><option value="none">actual size (1:1, no scaling)</option></select></label>
         <label><span>Height (× banner height)</span><input type="number" id="bp-heightScale" min="0.25" max="4" step="0.25"></label>
       </div>
       <label class="inline"><input type="checkbox" class="switch" id="bp-sticky"><span>Sticky: locks at the top like a header until the next header or sticky banner pushes it out</span></label>
@@ -444,8 +444,8 @@
       </tbody>
     </table>
     <div class="grid3 topbg-chooser">
-      <div><input type="hidden" data-setting="topBgImage"><label><span>Top background image</span></label><div class="row" style="gap:4px"><label class="sm-btn">Choose image…<input type="file" accept="image/*" data-action="topbg-file" hidden></label><button type="button" class="sm" data-action="topbg-remove">Remove</button></div><div class="hint mono topbg-info">none: blue gradient</div></div>
-      <label><span>Image fit</span><select data-setting="topBgFit"><option value="cover">cover (fill, crop edges)</option><option value="contain">contain (whole image)</option><option value="stretch">stretch</option></select></label>
+      <div><input type="hidden" data-setting="topBgImage"><label><span>Top background image</span></label><div class="row" style="gap:4px"><label class="sm-btn">Choose image…<input type="file" accept="image/*" data-action="topbg-file" hidden></label><button type="button" class="sm" data-action="topbg-remove">Remove</button></div><div class="hint mono topbg-info">none: blue gradient</div><div class="hint mono topbg-size"></div></div>
+      <label><span>Image fit</span><select data-setting="topBgFit"><option value="cover">cover (fill, crop edges)</option><option value="contain">contain (whole image)</option><option value="stretch">stretch</option><option value="none">actual size (1:1, no scaling)</option></select></label>
       <label><span>Darken image %</span><input type="number" data-setting="topBgDim" min="0" max="90" step="5"></label>
     </div>
     <div class="hint">The image replaces the blue gradient above the header bar (behind the video window and promo panel). With "contain", the gradient shows around it. Saved in this browser; included in exported themes when "include banners…" is ticked.</div>
@@ -1810,16 +1810,23 @@ function drawImageFit(ctx, img, box, fit, stretch = 1) {
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
   if (!iw || !ih || box.w <= 0 || box.h <= 0) return;
   let dw = box.w, dh = box.h;
-  if (fit !== 'stretch') {
+  if (fit === 'none') { dw = iw / stretch; dh = ih; }   // actual size: never scaled, centred, cropped by the box
+  else if (fit !== 'stretch') {
     const imgAspect = (iw / ih) / stretch;        // as it will look after any output stretch
     const boxAspect = box.w / box.h;
     const widthLimited = fit === 'cover' ? imgAspect < boxAspect : imgAspect > boxAspect;
     if (widthLimited) { dw = box.w; dh = box.w / imgAspect; } else { dh = box.h; dw = box.h * imgAspect; }
   }
+  // An image made at exactly the box size (or "actual size") is stamped pixel for pixel: whole-pixel position,
+  // no resampling. Everything else is scaled smoothly.
+  const oneToOne = stretch === 1 && Math.abs(dw - iw) < 0.5 && Math.abs(dh - ih) < 0.5;
+  if (oneToOne) { dw = iw; dh = ih; }
+  const x = box.x + (box.w - dw) / 2, y = box.y + (box.h - dh) / 2;
   ctx.save();
   ctx.beginPath(); ctx.rect(box.x, box.y, box.w, box.h); ctx.clip();
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, box.x + (box.w - dw) / 2, box.y + (box.h - dh) / 2, dw, dh);
+  ctx.imageSmoothingEnabled = !oneToOne; ctx.imageSmoothingQuality = 'high';
+  if (oneToOne) ctx.drawImage(img, Math.round(x), Math.round(y));
+  else ctx.drawImage(img, x, y, dw, dh);
   ctx.restore();
 }
 
@@ -2669,6 +2676,27 @@ async function topBgRemoved() {
   if (prev) await libDelete(imageLib, prev);
   updateTopBgInfo(); scheduleRebuild();
 }
+/** The exact pixel sizes to design images at, for 1:1 (no scaling) with the current settings. */
+function imageDesignSizes() {
+  const S = state.skin; if (!S) return null;
+  const sx = state.pxScale.x, sy = state.pxScale.y, g = S.gridRect, b = S.bevel;
+  const p = bannerLib.presets.get(bannerLib.editingId);
+  const scale = p && +p.heightScale > 0 ? +p.heightScale : 1;
+  const rowH = Math.max(Math.round(S.rowHeight * 0.5), Math.round(S.bannerHeight * scale));
+  const box = S.boxRect({ x: 0, y: 0, w: g.w, h: rowH });
+  const fmt = (w, h) => `${w} × ${h}`;
+  const out = (w, h) => (sx === 1 && sy === 1 ? '' : ` (drawn at internal ${fmt(w, h)}, shown ${fmt(Math.round(w * sx), Math.round(h * sy))} in the export)`);
+  return {
+    top: `design at ${fmt(S.width, g.y)} px for 1:1${out(S.width, g.y)} · video window covers x 0–${S.videoRect.w}`,
+    banner: `image area ${fmt(box.w - 2 * b, box.h - 2 * b)} px for 1:1 at this banner's height${out(box.w - 2 * b, box.h - 2 * b)}`,
+  };
+}
+function updateImageSizeHints() {
+  const d = imageDesignSizes(); if (!d) return;
+  for (const n of document.querySelectorAll('.topbg-size')) n.textContent = d.top;
+  if (el('bp-imageSize')) el('bp-imageSize').textContent = d.banner;
+}
+
 function updateTopBgInfo() {
   const id = (primaryInput('topBgImage') || {}).value || '';
   const rec = id ? imageLib.presets.get(id) : null;
@@ -2947,6 +2975,7 @@ async function rebuild() {
   renderTimeline();
   refreshMirrors();
   updateTopBgInfo();
+  updateImageSizeHints();
   updateNameCounts();
   setTime(preview.t);
   if (bannerLib.editingId) renderBannerPreview();
@@ -3225,6 +3254,7 @@ let bannerSaveTimer = 0;
 function openBannerEditor(id) {
   const p = bannerLib.presets.get(id); if (!p) return;
   bannerLib.editingId = id;
+  setTimeout(updateImageSizeHints, 0);
   const fontSel = el('bp-font');
   fontSel.innerHTML = '';
   fontSel.add(new Option('(Banners font)', ''));
@@ -3250,6 +3280,7 @@ function bannerEditorChanged() {
   }
   clearTimeout(bannerSaveTimer); bannerSaveTimer = setTimeout(() => persistBannerPreset(p), 300);
   renderBannerLibrary(); renderBannerQueue(); renderFixedList(); renderBlockLibrary(); renderBannerPreview(); scheduleRebuild();
+  updateImageSizeHints();
 }
 async function bannerImageChosen(file) {
   const p = bannerLib.presets.get(bannerLib.editingId); if (!p || !file) return;

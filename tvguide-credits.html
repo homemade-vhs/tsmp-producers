@@ -541,6 +541,13 @@
     <label><span>First channel names (one per line; used once each, in this order, before the list above)</span><textarea data-setting="channelNamesFirstText" rows="3"></textarea></label>
   </fieldset>
 
+  <fieldset style="--tint: #ff6b8a">
+    <legend>Word filter</legend>
+    <div class="hint">Censors producer names on screen (the lists above aren't changed). One word per line: <code>word</code> swaps its first vowel for <code>*</code>; <code>word = replacement</code> uses your own text. Matches ignore case and also catch the word inside a longer name; put it in quotes (<code>"word"</code>) to match only the whole word, so short words don't hit inside other names.</div>
+    <label><span>Words to filter</span><textarea data-setting="wordFilterText" rows="4" placeholder="darn&#10;heck = h*ck&#10;&quot;ass&quot;"></textarea></label>
+    <details id="wordFilterReport"><summary class="hint" id="wordFilterSummary">No names changed.</summary><div class="mono hint" id="wordFilterList" style="max-height:200px;overflow:auto;white-space:pre-wrap"></div></details>
+  </fieldset>
+
   <fieldset style="--tint: #f0a35b">
     <legend>Patreon CSV import</legend>
     <div class="dropzone" id="csvDrop">Drop a Patreon members CSV here, or <label style="display:inline;color:var(--accent2);cursor:pointer">choose a file<input type="file" id="csvFile" accept=".csv,text/csv" hidden></label>.</div>
@@ -665,6 +672,7 @@ const DEFAULTS = {
   prodNamesText: '',
   channelNamesText: '',
   channelNamesFirstText: '',    // used once each, in order, for the first rows; then channelNamesText takes over
+  wordFilterText: '',           // one rule per line: word | word = replacement | "word" (whole word only); applied to producer names at layout time
 };
 
 /** Text roles that can each take their own font. Settings per role: font<Key> (font file name, '' = default), fontSize<Key> %, fontWidth<Key> %, fontBold<Key>. */
@@ -821,6 +829,51 @@ function parseNameList(text, sort) {
   const names = splitLines(text);
   if (sort) names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   return names;
+}
+
+/**
+ * Word filter rules, one per line: `word` (auto: first vowel → *), `word = replacement`, `"word"` = whole word only.
+ * → a function name → censored name, or null when there are no rules.
+ */
+function parseWordFilter(text) {
+  const rules = splitLines(text).map((line) => {
+    const eq = line.indexOf('=');
+    let pat = (eq >= 0 ? line.slice(0, eq) : line).trim();
+    const replacement = eq >= 0 ? line.slice(eq + 1).trim() : '';
+    const whole = pat.length > 2 && /^["“].*["”]$/.test(pat);
+    if (whole) pat = pat.slice(1, -1).trim();
+    return pat ? { pat, whole, replacement } : null;
+  }).filter(Boolean).sort((a, b) => b.pat.length - a.pat.length);   // longest first, so "asshole" wins over "ass"
+  if (!rules.length) return null;
+  const escRe = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const edge = '[\\p{L}\\p{N}]';
+  const re = new RegExp(rules.map((r, i) => `(?<r${i}>${r.whole ? `(?<!${edge})` : ''}${escRe(r.pat)}${r.whole ? `(?!${edge})` : ''})`).join('|'), 'giu');
+  return (name) => name.replace(re, (...args) => {
+    const groups = args[args.length - 1];
+    const rule = rules[rules.findIndex((_, i) => groups[`r${i}`] !== undefined)];
+    return rule.replacement ? matchCase(rule.replacement, args[0]) : autoCensor(args[0]);
+  });
+}
+/** Give a typed replacement the matched word's case: ALL CAPS → all caps, Capitalised → capitalised. */
+function matchCase(replacement, matched) {
+  const letters = matched.replace(/[^\p{L}]/gu, '');
+  if (letters.length > 1 && letters === letters.toUpperCase() && letters !== letters.toLowerCase()) return replacement.toUpperCase();
+  const first = Array.from(matched)[0];
+  if (first && first !== first.toLowerCase()) return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+  return replacement;
+}
+/** Keep the word's own letters and case, swap the first vowel for * (no vowel: the second character). */
+function autoCensor(word) {
+  const chars = Array.from(word);
+  let i = chars.findIndex((c) => /[aeiou]/i.test(c));
+  if (i < 0) i = Math.min(1, chars.length - 1);
+  chars[i] = '*';
+  return chars.join('');
+}
+/** Apply the word filter to a list; changes are pushed onto `report` as { from, to }. */
+function filterNames(names, filter, report) {
+  if (!filter) return names;
+  return names.map((n) => { const out = filter(n); if (out !== n) report.push({ from: n, to: out }); return out; });
 }
 
 /** Promo panels: one per line; '|' separates lines inside a panel. */
@@ -1430,10 +1483,12 @@ function buildLayout(config, skin, ctx, blocks = {}) {
   const f = skin.fonts;
   const minScale = config.minFontScale;
   const { rotation, fixed } = normalizeBlocks(blocks);
+  const wordFilter = parseWordFilter(config.wordFilterText);
+  const censored = [];
 
   const sectionDefs = [
-    { key: 'exec', title: config.execTitle, names: parseNameList(config.execNamesText, config.sortNames), namesPerRow: clamp(config.execNamesPerRow | 0, 1, 8), bannerEvery: Math.max(0, config.execBannerEvery | 0), style: resolveHeaderStyle(config.execHeaderStyle) },
-    { key: 'prod', title: config.prodTitle, names: parseNameList(config.prodNamesText, config.sortNames), namesPerRow: clamp(config.prodNamesPerRow | 0, 1, 8), bannerEvery: Math.max(0, config.prodBannerEvery | 0), style: resolveHeaderStyle(config.prodHeaderStyle) },
+    { key: 'exec', title: config.execTitle, names: filterNames(parseNameList(config.execNamesText, config.sortNames), wordFilter, censored), namesPerRow: clamp(config.execNamesPerRow | 0, 1, 8), bannerEvery: Math.max(0, config.execBannerEvery | 0), style: resolveHeaderStyle(config.execHeaderStyle) },
+    { key: 'prod', title: config.prodTitle, names: filterNames(parseNameList(config.prodNamesText, config.sortNames), wordFilter, censored), namesPerRow: clamp(config.prodNamesPerRow | 0, 1, 8), bannerEvery: Math.max(0, config.prodBannerEvery | 0), style: resolveHeaderStyle(config.prodHeaderStyle) },
   ].filter((s) => s.names.length > 0);
 
   const rows = [];
@@ -1525,7 +1580,7 @@ function buildLayout(config, skin, ctx, blocks = {}) {
   }
   addFixed('end', 'end', null);
 
-  return { rows, headers, sections, contentHeight: y };
+  return { rows, headers, sections, contentHeight: y, censored };
 }
 
 // ============================================================================
@@ -2517,6 +2572,7 @@ function buildLayoutJSON(extra) {
       })),
       rows: layout.rows.filter((r) => r.type === 'banner').map((r) => ({ section: r.section, presetId: r.presetId, blockId: r.blockId || null, contentY: r.y, height: r.height })),
     },
+    censored: layout.censored,
     names: { exec: parseNameList(execNamesText, config.sortNames), prod: parseNameList(prodNamesText, config.sortNames), channels: parseNameList(channelNamesText, false), channelsFirst: parseNameList(channelNamesFirstText, false) },
   };
 }
@@ -2983,6 +3039,7 @@ async function rebuild() {
   updateTopBgInfo();
   updateImageSizeHints();
   updateNameCounts();
+  updateWordFilterReport();
   setTime(preview.t);
   if (bannerLib.editingId) renderBannerPreview();
   if (headerEditingId) renderHeaderPreview();
@@ -3048,6 +3105,12 @@ function updateNameCounts() {
   const s = state.layout.sections;
   const n = (key) => (s.find((x) => x.key === key) || { nameCount: 0 }).nameCount;
   el('nameCounts').textContent = `${n('exec')} exec · ${n('prod')} producers · ${parseNameList(state.config.channelNamesText, false).length} channels${(() => { const k = parseNameList(state.config.channelNamesFirstText, false).length; return k ? ` (+${k} first)` : ''; })()}`;
+}
+
+function updateWordFilterReport() {
+  const list = state.layout.censored || [];
+  el('wordFilterSummary').textContent = list.length ? `${list.length} name${list.length === 1 ? '' : 's'} changed (click to check them)` : 'No names changed.';
+  el('wordFilterList').textContent = list.map((c) => `${c.from}  →  ${c.to}`).join('\n');
 }
 
 let diagGeneration = 0;

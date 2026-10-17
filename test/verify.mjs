@@ -204,6 +204,19 @@ if (near(info.videoRect.w / info.videoRect.h, 4 / 3, 0.01) && info.videoRect.x =
   if (ok) pass('PNG transparency: none / video window only / background + window'); else fail('PNG transparency', JSON.stringify(r));
 }
 
+// 7d. word filter: auto vowel → *, typed replacement (case matched), whole-word quotes, raw lists untouched
+{
+  const r = await page.evaluate(() => {
+    const { state, buildLayout } = window.__tvguide;
+    const cfg = { ...state.config, sortNames: false, execNamesText: 'Big Darn Guy\nHeckler\nAssassin Cass\nMy ass\nDARN IT', prodNamesText: 'Plain Name', wordFilterText: 'darn\nheck = h*ck\n"ass"' };
+    const l = buildLayout(cfg, state.skin, state.renderCtx);
+    const cells = l.rows.filter((row) => row.type === 'row').flatMap((row) => row.cells.map((c) => c.fit.text));
+    return { cells, censored: l.censored.length, none: buildLayout({ ...cfg, wordFilterText: '' }, state.skin, state.renderCtx).censored.length };
+  });
+  const want = ['Big D*rn Guy', 'H*ckler', 'Assassin Cass', 'My *ss', 'D*RN IT', 'Plain Name'];
+  if (JSON.stringify(r.cells) === JSON.stringify(want) && r.censored === 4 && r.none === 0) pass('word filter'); else fail('word filter', JSON.stringify(r));
+}
+
 // 8. reference frames
 const shot = async (t, name) => {
   await page.evaluate((t) => window.__tvguide.setTime(t), t);

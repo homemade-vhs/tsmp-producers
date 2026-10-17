@@ -253,7 +253,7 @@
       <button id="btnExportMp4Test">Export 5-second test MP4</button>
       <button id="btnExportPng">Export PNG sequence (full)</button>
       <button id="btnExportPngTest">PNG sequence, 5-second test</button>
-      <label class="inline" title="PNG sequence only: leaves the background and video window unpainted so the frames have alpha there."><input type="checkbox" data-setting="transparentPng"><span>Transparent background + video window (PNG)</span></label>
+      <label class="inline" title="PNG sequence only: what to leave unpainted so the frames have alpha there."><span>PNG transparency</span><select data-setting="pngTransparency"><option value="none">none (everything painted)</option><option value="window">video window only</option><option value="all">background + video window</option></select></label>
     </div>
     <progress id="exportProgress" max="1" value="0" hidden></progress>
     <div class="row">
@@ -538,6 +538,7 @@
     <label><span>Executive Producers (one per line)</span><textarea data-setting="execNamesText" rows="6"></textarea></label>
     <label><span>Podcast Producers (one per line)</span><textarea data-setting="prodNamesText" rows="6"></textarea></label>
     <label><span>Channel names / callsigns (one per line)</span><textarea data-setting="channelNamesText" rows="4"></textarea></label>
+    <label><span>First channel names (one per line; used once each, in this order, before the list above)</span><textarea data-setting="channelNamesFirstText" rows="3"></textarea></label>
   </fieldset>
 
   <fieldset style="--tint: #f0a35b">
@@ -657,12 +658,13 @@ const DEFAULTS = {
   pixelSnap: true,              // nearest only: adjust the internal size so the upscale is a whole number (every pixel, every bevel the same size)
   designScale: 1.0,             // multiplies every skin size (1.0 = the 1080p design scaled by frame height)
   bitrateMbps: 0,               // 0 = auto: 40 at 1080p, 100 at 4K
-  transparentPng: false,
+  pngTransparency: 'none',      // PNG sequence only: 'none' | 'window' (just the video window has alpha) | 'all' (background + video window)
   // names
   sortNames: false,
   execNamesText: '',
   prodNamesText: '',
   channelNamesText: '',
+  channelNamesFirstText: '',    // used once each, in order, for the first rows; then channelNamesText takes over
 };
 
 /** Text roles that can each take their own font. Settings per role: font<Key> (font file name, '' = default), fontSize<Key> %, fontWidth<Key> %, fontBold<Key>. */
@@ -1371,11 +1373,13 @@ function fitTwoLines(measure, text, maxWidth, basePx, minPx, opt) {
 }
 
 /** Seeded channel-name picker: no repeats until the list is exhausted, then reshuffle. */
-function makeChannelPicker(names, rng) {
-  if (!names.length) return () => 'CH';
+function makeChannelPicker(names, rng, first = []) {
+  let f = 0;
+  if (!names.length) return () => (f < first.length ? first[f++] : 'CH');
   let deck = seededShuffle(names, rng);
   let i = 0;
   return () => {
+    if (f < first.length) return first[f++];
     if (i >= deck.length) { deck = seededShuffle(names, rng); i = 0; }
     return deck[i++];
   };
@@ -1422,7 +1426,7 @@ function normalizeBlocks(blocks) {
 function buildLayout(config, skin, ctx, blocks = {}) {
   const rng = mulberry32(config.seed | 0);
   const channelNames = parseNameList(config.channelNamesText, false);
-  const pickChannel = makeChannelPicker(channelNames, rng);
+  const pickChannel = makeChannelPicker(channelNames, rng, parseNameList(config.channelNamesFirstText, false));
   const f = skin.fonts;
   const minScale = config.minFontScale;
   const { rotation, fixed } = normalizeBlocks(blocks);
@@ -1653,8 +1657,8 @@ function speedAt(timing, t) {
 //      boxRect(rect), headerTileBox(rect), headerTitleBox(rect), textBox(role, box), bannerFont(preset)
 //                                       (geometry shared with layout so fitted text always matches what's drawn)
 //      loadFonts() → Promise            (layout never runs before this resolves)
-//      drawBackground(ctx, opts)        opts.transparent → paint nothing
-//      drawVideoWindow(ctx, opts)       opts.transparent → nothing painted in the window (frame only when boxed)
+//      drawBackground(ctx, opts)        opts.transparentBg → paint nothing
+//      drawVideoWindow(ctx, opts)       opts.transparentWindow → window cleared to alpha 0 (frame still drawn when boxed)
 //      drawPromoPanel(ctx, panel, opts) panel = { lines: [...] } | null
 //      Every grid draw takes info = { tier: 'exec'|'prod', parts: { box, content } } (parts = cable-box load-in stage)
 //      drawHeader(ctx, rect, header, clockText, info)     header = { title: fit, style: header style preset }
@@ -1997,7 +2001,7 @@ function createGreyboxSkin(W, H, options = {}) {
     },
 
     drawBackground(ctx, opts) {
-      if (opts.transparent) return;
+      if (opts.transparentBg) return;
       // Painted once, then stamped: Chrome can rasterise a gradient 1 level differently from frame to frame
       // (GPU vs CPU canvas), so this keeps every frame bit-identical.
       if (!this._bg) {
@@ -2021,7 +2025,7 @@ function createGreyboxSkin(W, H, options = {}) {
 
     drawVideoWindow(ctx, opts) {
       if (boxed) { const f = videoFrameRect; ctx.fillStyle = colors.videoFrame; ctx.fillRect(f.x, f.y, f.w, f.h); }
-      if (opts.transparent) ctx.clearRect(videoRect.x, videoRect.y, videoRect.w, videoRect.h);
+      if (opts.transparentWindow) ctx.clearRect(videoRect.x, videoRect.y, videoRect.w, videoRect.h);
       else { ctx.fillStyle = videoFill; ctx.fillRect(videoRect.x, videoRect.y, videoRect.w, videoRect.h); }
     },
 
@@ -2106,7 +2110,7 @@ const state = {
   promos: [], clockStartSeconds: 0,
   clockStyle: null,           // header style preset for the pinned clock box
   fixedBlocks: [],            // [{ id, at }] fixed placements (mirrored into config.fixedBlocks on every rebuild)
-  transparentMode: false,     // set only during a transparent PNG export
+  pngTransparency: 'none',    // 'window' | 'all' only during a transparent PNG export
   exporting: false,
   bannerQueue: [],            // ordered banner preset ids (mirrored into config.bannerQueue on every rebuild)
   renderCanvas: null,         // the canvas render() draws into (output canvas, or a separate full-frame one when upscaling/cropping)
@@ -2255,7 +2259,7 @@ function gridLayer(g) {
 
 function render(ctx, t) {
   const { skin } = state;
-  const opts = { transparent: state.transparentMode };
+  const opts = { transparentBg: state.pngTransparency === 'all', transparentWindow: state.pngTransparency !== 'none' };
   const reveal = loadInAt(t);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, skin.width, skin.height);
@@ -2451,7 +2455,7 @@ function beginExport(kind, total) {
 
 function endExport() {
   state.exporting = false;
-  state.transparentMode = false;
+  state.pngTransparency = 'none';
   document.body.classList.remove('exporting');
   el('btnCancelExport').hidden = true;
   setTime(preview.t);
@@ -2475,7 +2479,7 @@ function buildLayoutJSON(extra) {
       scrollPxPerSecondOutput: +(speed * scale).toFixed(3),
     };
   });
-  const { execNamesText, prodNamesText, channelNamesText, ...settings } = config;
+  const { execNamesText, prodNamesText, channelNamesText, channelNamesFirstText, ...settings } = config;
   return {
     tool: 'tvguide-credits', version: 1, exportedAt: new Date().toISOString(),
     ...extra,
@@ -2513,7 +2517,7 @@ function buildLayoutJSON(extra) {
       })),
       rows: layout.rows.filter((r) => r.type === 'banner').map((r) => ({ section: r.section, presetId: r.presetId, blockId: r.blockId || null, contentY: r.y, height: r.height })),
     },
-    names: { exec: parseNameList(execNamesText, config.sortNames), prod: parseNameList(prodNamesText, config.sortNames), channels: parseNameList(channelNamesText, false) },
+    names: { exec: parseNameList(execNamesText, config.sortNames), prod: parseNameList(prodNamesText, config.sortNames), channels: parseNameList(channelNamesText, false), channelsFirst: parseNameList(channelNamesFirstText, false) },
   };
 }
 
@@ -2610,7 +2614,7 @@ async function exportPNGSequence(seconds) {
   catch (e) { if (e.name === 'AbortError') { setExportStatus('Export cancelled.'); return; } throw e; }
 
   beginExport('PNG', frameCount);
-  state.transparentMode = !!cfg.transparentPng;
+  state.pngTransparency = ['window', 'all'].includes(cfg.pngTransparency) ? cfg.pngTransparency : 'none';
   try {
     for (let n = 0; n < frameCount; n++) {
       if (exportState.cancelled) break;
@@ -2624,7 +2628,7 @@ async function exportPNGSequence(seconds) {
     }
     if (exportState.cancelled) { setExportStatus(`Cancelled after ${exportState.done} frames (files written so far were kept).`); return; }
     const jsonName = `${exportBaseName(frameCount)}.layout.json`;
-    const json = JSON.stringify(buildLayoutJSON({ exportName: 'frame_%05d.png', exportKind: 'png-sequence', frames: frameCount, durationSeconds: +total.toFixed(6), transparent: state.transparentMode }), null, 2);
+    const json = JSON.stringify(buildLayoutJSON({ exportName: 'frame_%05d.png', exportKind: 'png-sequence', frames: frameCount, durationSeconds: +total.toFixed(6), transparency: state.pngTransparency }), null, 2);
     await writeToHandle(await dir.getFileHandle(jsonName, { create: true }), json);
     const elapsed = (performance.now() - exportState.startedAt) / 1000;
     setExportStatus(`Done: ${frameCount} PNGs + ${jsonName} in ${formatDuration(elapsed)}.`, 'ok');
@@ -2867,6 +2871,8 @@ function loadSettings() {
     }
     if (raw['txShadowOn' + k] === undefined && raw['txShadowOpacity' + k] !== undefined) raw['txShadowOn' + k] = +raw['txShadowOpacity' + k] > 0;
   }
+  // Before the PNG transparency menu, a single checkbox made the background and the video window transparent.
+  if (raw.pngTransparency === undefined && raw.transparentPng !== undefined) raw.pngTransparency = raw.transparentPng ? 'all' : 'none';
   return { ...DEFAULTS, ...raw };
 }
 
@@ -3041,7 +3047,7 @@ function updateStats() {
 function updateNameCounts() {
   const s = state.layout.sections;
   const n = (key) => (s.find((x) => x.key === key) || { nameCount: 0 }).nameCount;
-  el('nameCounts').textContent = `${n('exec')} exec · ${n('prod')} producers · ${parseNameList(state.config.channelNamesText, false).length} channels`;
+  el('nameCounts').textContent = `${n('exec')} exec · ${n('prod')} producers · ${parseNameList(state.config.channelNamesText, false).length} channels${(() => { const k = parseNameList(state.config.channelNamesFirstText, false).length; return k ? ` (+${k} first)` : ''; })()}`;
 }
 
 let diagGeneration = 0;

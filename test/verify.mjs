@@ -167,6 +167,43 @@ if (near(info.videoRect.w / info.videoRect.h, 4 / 3, 0.01) && info.videoRect.x =
   if (r.reproducible && r.differs && r.restSame && r.noRepeat) pass('seed behaviour'); else fail('seed behaviour', JSON.stringify(r));
 }
 
+// 7b. first channel names: used once each, in order, then the shuffled list; empty box changes nothing
+{
+  const r = await page.evaluate(() => {
+    const { state, buildLayout } = window.__tvguide;
+    const ctx = state.renderCtx;
+    const names = (l) => l.rows.filter((r) => r.type === 'row').map((r) => r.channel.name);
+    const base = names(buildLayout({ ...state.config, channelNamesFirstText: '' }, state.skin, ctx));
+    const withFirst = names(buildLayout({ ...state.config, channelNamesFirstText: 'FIRST1\nFIRST2\nFIRST3' }, state.skin, ctx));
+    return {
+      firstInOrder: JSON.stringify(withFirst.slice(0, 3)) === JSON.stringify(['FIRST1', 'FIRST2', 'FIRST3']),
+      thenMainList: JSON.stringify(withFirst.slice(3, 40)) === JSON.stringify(base.slice(0, 37)),
+      usedOnce: withFirst.filter((n) => n.startsWith('FIRST')).length === 3,
+    };
+  });
+  if (r.firstInOrder && r.thenMainList && r.usedOnce) pass('first channel names'); else fail('first channel names', JSON.stringify(r));
+}
+
+// 7c. PNG transparency: 'window' clears only the video window; 'all' also clears the background; 'none' paints everything
+{
+  const r = await page.evaluate(() => {
+    const { state, render } = window.__tvguide;
+    const ctx = state.renderCtx, v = state.skin.videoRect, g = state.skin.gridRect;
+    const alpha = (x, y) => ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data[3];
+    const probe = (mode) => {
+      state.pngTransparency = mode; render(ctx, 0);
+      return { window: alpha(v.x + v.w / 2, v.y + v.h / 2), topBg: alpha(v.x + v.w + 3, 3), grid: alpha(g.x + g.w - 2, g.y + g.h - 2) };
+    };
+    const out = { none: probe('none'), window: probe('window'), all: probe('all') };
+    state.pngTransparency = 'none'; render(ctx, 0);
+    return out;
+  });
+  const ok = r.none.window === 255 && r.none.topBg === 255
+    && r.window.window === 0 && r.window.topBg === 255 && r.window.grid === 255
+    && r.all.window === 0 && r.all.topBg === 0;
+  if (ok) pass('PNG transparency: none / video window only / background + window'); else fail('PNG transparency', JSON.stringify(r));
+}
+
 // 8. reference frames
 const shot = async (t, name) => {
   await page.evaluate((t) => window.__tvguide.setTime(t), t);

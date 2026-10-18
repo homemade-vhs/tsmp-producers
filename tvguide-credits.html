@@ -164,7 +164,16 @@
   .qlist .tag { color: color-mix(in oklab, var(--tint, var(--yellow)) 75%, white); font-size: 11px; font-weight: 700; white-space: nowrap; }
   .qlist button.sm { padding: 2px 8px; }
   .editor { border: 1px solid color-mix(in oklab, var(--tint, var(--blue)) 55%, transparent); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: rgba(0, 0, 0, 0.25); }
-  .editor.flash { animation: flash 900ms ease-out; }
+  .editor.flash, .controls .flash { animation: flash 900ms ease-out; border-radius: 10px; }
+  .controls tr.flash { animation: flash-row 1200ms ease-out; }
+  @keyframes flash-row { from { background: color-mix(in oklab, var(--tint, var(--blue)) 45%, transparent); } to { background: transparent; } }
+  /* click-to-edit on the preview: hover outline + "also" popover */
+  .pick-outline { position: fixed; pointer-events: none; z-index: 40; border: 2px solid #ffe94a; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.6); }
+  .pick-outline span { position: absolute; left: -2px; bottom: 100%; margin-bottom: 3px; background: #ffe94a; color: #111; font: 700 11px/1.5 system-ui, sans-serif; padding: 0 6px; border-radius: 4px; white-space: nowrap; }
+  .pick-outline.below span { bottom: auto; top: 100%; margin: 3px 0 0; }
+  .pick-pop { position: fixed; z-index: 41; background: #1b1b25; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 12px; padding: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; gap: 6px; max-width: 320px; }
+  .pick-pop b { font-size: 12px; } .pick-pop .row { gap: 4px; flex-wrap: wrap; }
+  .canvas-wrap.pickable #outputCanvas { cursor: pointer; }
   @keyframes flash { from { box-shadow: 0 0 0 3px color-mix(in oklab, var(--tint, var(--blue)) 70%, transparent); } to { box-shadow: 0 0 0 0 transparent; } }
   #bannerPreview, .preview-canvas { width: 100%; height: auto; background: #0b1150; border-radius: 8px; display: block; }
   table.look { border-collapse: collapse; width: 100%; }
@@ -222,6 +231,7 @@
       <option value="fit">Fit</option><option value="25">25%</option><option value="50">50%</option><option value="100">100% (1:1)</option>
       <option value="200">200%</option><option value="300">300%</option><option value="400">400%</option><option value="800">800%</option>
     </select>
+    <label class="inline" title="Hover the preview to see what each part is; click it to jump to its settings."><input type="checkbox" id="pickEnabled" checked><span>Click to edit</span></label>
   </div>
 
   <div class="timeline" id="timeline">
@@ -2354,14 +2364,14 @@ function drawRow(ctx, skin, row, y, parts) {
  * pixels into a layer for the integer part of the scroll, then the layer is stamped at the fractional offset with
  * smoothing, so rows glide evenly; the locked header and the pinned clock are drawn crisp on top.
  */
-function drawGrid(ctx, t, reveal) {
+/** What's in the grid at t and where (render px), in draw order. Shared by drawGrid and the preview's click-to-edit. */
+function gridItemsAt(t) {
   const { layout, skin, timing } = state;
   const g = skin.gridRect, L = g.y;
   const s = scrollAt(timing, t);
   const sub = state.config.scrollMotion === 'subpixel';
   const sBase = sub ? Math.floor(s) : s, frac = sub ? s - sBase : 0;
   const place = (y) => Math.round(y + frac);   // a moving element's whole-pixel position at the integer scroll
-  const clockText = clockTextAt(t);
   // Everything on screen, in draw order: rows first, then headers on top, then the pinned clock.
   // `moving` = goes into the sub-pixel layer.
   const items = [];
@@ -2390,6 +2400,14 @@ function drawGrid(ctx, t, reveal) {
     const riding = ys[0] > L;   // scroll-in lead-in: the clock rides with the first header until it locks
     items.push({ kind: 2, y: riding ? (sub ? place(ys[0]) : Math.round(ys[0])) : L, moving: riding });
   }
+  return { items, sub, frac };
+}
+
+function drawGrid(ctx, t, reveal) {
+  const { skin } = state;
+  const g = skin.gridRect;
+  const { items, sub, frac } = gridItemsAt(t);
+  const clockText = clockTextAt(t);
   if (reveal) {
     // load-in order: top of the screen first; at the same height the clock, then headers, then rows
     const order = items.slice().sort((a, b) => a.y - b.y || b.kind - a.kind);
@@ -4251,6 +4269,163 @@ function bindPreviewZoom() {
   wrap.addEventListener('pointerup', end); wrap.addEventListener('pointercancel', end);
 }
 
+// ---- click-to-edit: hover a part of the preview to outline it, click to jump to its settings ----
+const PICK_KEY = 'tvguide-credits.clickToEdit';
+const tierName = (tier) => (tier === 'exec' ? 'Exec' : tier === 'prod' ? 'Producers' : '');
+/** Where a part's settings live. Each target: { label, key } (a setting), { label, sel } (an element in the panel) or { label, run } (opens an editor, returns the node). */
+const PICK_T = {
+  font: (key, label) => ({ label: label || 'Font', key: `font${key}` }),
+  textStyle: (key) => ({ label: 'Text style', key: `txAlignH${key}`, details: true }),
+  headerStyle: (id) => ({ label: 'Header style colours', run: () => { const sid = headerLib.presets.has(id) ? id : 'default-header'; openHeaderEditor(sid); return el('headerEditor'); } }),
+  banner: (id) => ({ label: 'Banner preset', run: () => { if (!bannerLib.presets.has(id)) return null; openBannerEditor(id); return el('bannerEditor'); } }),
+  block: (id) => ({ label: 'Block', run: () => { if (!blockLib.presets.has(id)) return null; openBlockEditor(id); return el('blockEditor'); } }),
+};
+function clockTargets(styleId) {
+  return [{ label: 'Clock settings', key: 'clockContent' }, { label: 'Clock mode', key: 'clockMode' }, PICK_T.font('Clock'), PICK_T.textStyle('Clock'), PICK_T.headerStyle(styleId)];
+}
+/** The part of the frame under render-pixel (x, y) at time t: { label, rect, targets } or null. Mirrors render() / drawGrid(). */
+function hitTestAt(x, y, t) {
+  const { skin, config } = state; if (!skin || !state.layout) return null;
+  const g = skin.gridRect;
+  if (x < 0 || y < 0 || x >= skin.width || y >= skin.height) return null;
+  if (y >= g.y) {
+    const { items } = gridItemsAt(t);
+    const clockRect = (iy) => skin.headerTileBox({ x: g.x, y: iy, w: g.w, h: skin.headerHeight });
+    const inside = (r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+    for (let i = items.length - 1; i >= 0; i--) {   // topmost first
+      const it = items[i];
+      if (it.kind === 2 || it.kind === 3) {
+        const r = clockRect(it.y);
+        if (inside(r)) return { label: it.kind === 2 ? 'Pinned clock' : 'Header clock', rect: r, targets: it.kind === 2 ? [...clockTargets(config.clockStyle), { label: 'Pinned clock style', key: 'clockStyle' }] : clockTargets(it.style && it.style.id) };
+        continue;
+      }
+      if (it.kind === 1) {
+        const h = it.header, r = { x: g.x, y: it.y, w: g.w, h: h.height };
+        if (!inside(r)) continue;
+        if (h.kind === 'banner') return { label: `Banner: ${h.presetName} (sticky)`, rect: r, targets: [PICK_T.banner(h.presetId), ...(h.blockId ? [PICK_T.block(h.blockId)] : []), PICK_T.font('Banner'), PICK_T.textStyle('Banner'), { label: 'Banner height', key: 'bannerHeightPx' }] };
+        const styleId = h.style && h.style.id;
+        if (inside(clockRect(it.y))) return { label: 'Header clock box', rect: clockRect(it.y), targets: clockTargets(styleId) };
+        const common = [PICK_T.headerStyle(styleId), PICK_T.font('Header'), PICK_T.textStyle('Header'), { label: 'Header height', key: 'headerHeightPx' }];
+        if (h.kind === 'opening') return { label: 'Opening header', rect: r, targets: [{ label: 'Opening header text', key: 'openingHeaderText' }, { label: 'Opening header style', key: 'openingHeaderStyle' }, ...common] };
+        if (h.kind === 'block' && h.blockId) return { label: `Block header: ${h.title.text}`, rect: r, targets: [PICK_T.block(h.blockId), ...common] };
+        const sec = h.section === 'exec' ? 'exec' : 'prod';
+        return { label: `${tierName(sec)} header`, rect: r, targets: [{ label: 'Title', key: `${sec}Title` }, { label: 'Header style', key: `${sec}HeaderStyle` }, ...common] };
+      }
+      const row = it.row, r = { x: g.x, y: it.y, w: g.w, h: row.height };
+      if (!inside(r)) continue;
+      if (row.type === 'banner') return { label: `Banner: ${row.presetName}`, rect: r, targets: [PICK_T.banner(row.presetId), ...(row.blockId ? [PICK_T.block(row.blockId)] : []), { label: 'Banner queue', sel: '#bannerQueue' }, PICK_T.font('Banner'), PICK_T.textStyle('Banner'), { label: 'Banner height', key: 'bannerHeightPx' }] };
+      const exec = row.section === 'exec', tier = tierName(row.section);
+      if (x < g.x + skin.channelTileWidth) {
+        return { label: `Channel tile (${tier})`, rect: { x: g.x, y: it.y, w: skin.channelTileWidth, h: row.height }, targets: [
+          { label: 'Tile colours', key: exec ? 'colExecTileFill' : 'colTileFill' }, PICK_T.font('Tile'), PICK_T.textStyle('Tile'),
+          { label: 'Channel names', key: 'channelNamesText' }, { label: 'First channel names', key: 'channelNamesFirstText' }, { label: 'Channel start', key: 'channelStart' }] };
+      }
+      const slots = cellSlots(skin, row.namesPerRow);
+      const slot = slots.find((sl) => x >= sl.x && x < sl.x + sl.w) || slots[slots.length - 1];
+      return { label: `Name cell (${tier})`, rect: { x: slot.x, y: it.y, w: slot.w, h: row.height }, targets: [
+        { label: 'Cell colours', key: exec ? 'colExecCellFill' : 'colCellFill' }, PICK_T.font('Cell'), PICK_T.textStyle('Cell'),
+        { label: 'Names per row', key: exec ? 'execNamesPerRow' : 'prodNamesPerRow' }, { label: 'Name list', key: exec ? 'execNamesText' : 'prodNamesText' }, { label: 'Word filter', key: 'wordFilterText' }] };
+    }
+    return { label: 'Grid background', rect: g, targets: [{ label: 'Grid colour', key: 'colGrid' }, { label: 'Gap between boxes', key: 'gapPx' }] };
+  }
+  const v = skin.videoRect, inRect = (r) => r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+  if (inRect(v)) return { label: skin.topArea === 'blank' ? 'Top area (video fill)' : 'Video window', rect: v, targets: [{ label: 'Video window style', key: 'videoWindowStyle' }, { label: 'Fill colour', key: 'videoFill' }, { label: 'Video aspect', key: 'videoAspect' }, { label: 'Top area', key: 'topArea' }, { label: 'PNG transparency', key: 'pngTransparency' }] };
+  const pa = skin.promoArea && skin.promoArea();
+  if (inRect(pa)) return { label: 'Promo panel', rect: pa, targets: [{ label: 'Promo panels', key: 'promosText' }, { label: 'Transition', key: 'promoTransition' }, { label: 'Promo images', sel: '.promo-images-list' }, PICK_T.font('Promo'), PICK_T.textStyle('Promo'), { label: 'Promo colours', key: 'colPromoAccent' }] };
+  return { label: 'Top background', rect: { x: 0, y: 0, w: skin.width, h: g.y }, targets: [{ label: 'Top background image', sel: '.topbg-chooser' }, { label: 'Gradient colours', key: 'colBgTop' }] };
+}
+/** The control for a target in whichever arrangement (by tool / by part) is showing, or null. */
+function pickTargetNode(tg) {
+  if (tg.run) return tg.run();
+  const shown = (n) => { const fs = n.closest('.controls > fieldset, .controls fieldset'); return !fs || fs.getClientRects().length > 0; };
+  const nodes = tg.key ? [...document.querySelectorAll(`[data-setting="${tg.key}"]`)] : [...document.querySelectorAll(`.controls ${tg.sel}`)];
+  const n = nodes.find((x) => !x.closest('.transport') && shown(x)) || nodes[0];
+  if (!n) return null;
+  if (tg.details) return n.closest('details') || n;
+  return n.closest('tr') || n.closest('label') || n;
+}
+function goToPickTarget(tg) {
+  const node = pickTargetNode(tg); if (!node) return false;
+  for (let d = node.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+  revealInPanel(node);
+  return true;
+}
+/** Client (screen) point → render pixel, or null when outside the frame. */
+function clientToRender(cx, cy) {
+  const r = outputCanvas.getBoundingClientRect(); if (!r.width || !state.pxScale) return null;
+  const ox = ((cx - r.left) * outputCanvas.width) / r.width, oy = ((cy - r.top) * outputCanvas.height) / r.height;
+  if (ox < 0 || oy < 0 || ox >= outputCanvas.width || oy >= outputCanvas.height) return null;
+  const c = state.crop || { x: 0, y: 0 };
+  return { x: (ox + c.x) / state.pxScale.x, y: (oy + c.y) / state.pxScale.y };
+}
+/** Render-pixel rect → screen rect (clipped to the visible preview). */
+function renderRectToClient(rect) {
+  const r = outputCanvas.getBoundingClientRect(), c = state.crop || { x: 0, y: 0 };
+  const kx = r.width / outputCanvas.width, ky = r.height / outputCanvas.height;
+  const x0 = r.left + (rect.x * state.pxScale.x - c.x) * kx, y0 = r.top + (rect.y * state.pxScale.y - c.y) * ky;
+  const x1 = x0 + rect.w * state.pxScale.x * kx, y1 = y0 + rect.h * state.pxScale.y * ky;
+  const v = previewWrap().getBoundingClientRect();
+  const L = Math.max(x0, v.left, r.left), T = Math.max(y0, v.top, r.top), R = Math.min(x1, v.right, r.right), B = Math.min(y1, v.bottom, r.bottom);
+  return R > L && B > T ? { left: L, top: T, width: R - L, height: B - T } : null;
+}
+const pickUI = { outline: null, pop: null };
+function hidePickOutline() { if (pickUI.outline) pickUI.outline.hidden = true; previewWrap().classList.remove('pickable'); }
+function closePickPop() { if (pickUI.pop) { pickUI.pop.remove(); pickUI.pop = null; } }
+function pickEnabled() { return el('pickEnabled').checked && !state.exporting; }
+function showPickOutline(hit) {
+  const box = hit && renderRectToClient(hit.rect);
+  if (!box) { hidePickOutline(); return; }
+  if (!pickUI.outline) { pickUI.outline = document.createElement('div'); pickUI.outline.className = 'pick-outline'; pickUI.outline.appendChild(document.createElement('span')); document.body.appendChild(pickUI.outline); }
+  const o = pickUI.outline;
+  Object.assign(o.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+  o.firstChild.textContent = `${hit.label} · click to edit`;
+  o.classList.toggle('below', box.top < 30);
+  o.hidden = false;
+  previewWrap().classList.add('pickable');
+}
+/** Jump to the part's main settings, and offer the related ones in a small popover by the pointer. */
+function pickAt(cx, cy) {
+  closePickPop();
+  const p = clientToRender(cx, cy); if (!p) return null;
+  const hit = hitTestAt(p.x, p.y, preview.t); if (!hit) return null;
+  goToPickTarget(hit.targets[0]);
+  const pop = document.createElement('div'); pop.className = 'pick-pop';
+  pop.innerHTML = `<b>${esc(hit.label)}</b><div class="hint">Jumped to ${esc(hit.targets[0].label.toLowerCase())}. Also:</div><div class="row"></div>`;
+  for (const tg of hit.targets.slice(1)) pop.querySelector('.row').appendChild(smallButton(tg.label, () => { goToPickTarget(tg); }));
+  if (hit.targets.length < 2) pop.querySelector('.hint').textContent = `Jumped to ${hit.targets[0].label.toLowerCase()}.`;
+  document.body.appendChild(pop);
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  pop.style.left = `${Math.max(8, Math.min(cx + 12, window.innerWidth - w - 8))}px`;
+  pop.style.top = `${Math.max(8, Math.min(cy + 12, window.innerHeight - h - 8))}px`;
+  pickUI.pop = pop;
+  return hit;
+}
+function bindClickToEdit() {
+  const wrap = previewWrap(), toggle = el('pickEnabled');
+  try { const v = localStorage.getItem(PICK_KEY); if (v != null) toggle.checked = v === '1'; } catch (e) { /* default on */ }
+  toggle.addEventListener('change', () => { try { localStorage.setItem(PICK_KEY, toggle.checked ? '1' : '0'); } catch (e) { /* fine */ } if (!toggle.checked) { hidePickOutline(); closePickPop(); } });
+  let down = null, last = null;
+  wrap.addEventListener('pointerdown', (e) => { down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; });
+  wrap.addEventListener('pointerup', (e) => {
+    const d = down; down = null;
+    if (!d || !pickEnabled() || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;   // a drag (pan), not a click
+    pickAt(e.clientX, e.clientY);
+  });
+  wrap.addEventListener('pointermove', (e) => {
+    if (!pickEnabled() || (down && wrap.classList.contains('panning'))) { hidePickOutline(); return; }
+    last = { x: e.clientX, y: e.clientY };
+    const p = clientToRender(e.clientX, e.clientY);
+    showPickOutline(p && hitTestAt(p.x, p.y, preview.t));
+  });
+  wrap.addEventListener('pointerleave', () => { last = null; hidePickOutline(); });
+  wrap.addEventListener('scroll', hidePickOutline, { passive: true });
+  // keep the outline on the part under the pointer while the preview plays or is scrubbed
+  const follow = () => { if (last && pickEnabled() && pickUI.outline && !pickUI.outline.hidden) { const p = clientToRender(last.x, last.y); showPickOutline(p && hitTestAt(p.x, p.y, preview.t)); } requestAnimationFrame(follow); };
+  requestAnimationFrame(follow);
+  document.addEventListener('pointerdown', (e) => { if (pickUI.pop && !pickUI.pop.contains(e.target) && !wrap.contains(e.target)) closePickPop(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePickPop(); });
+}
+
 /**
  * Up/Down on a focused font dropdown steps to the previous/next font and applies it right away
  * (macOS would otherwise pop the menu open). Works on every role's font menu and the banner editor's.
@@ -4315,6 +4490,7 @@ function bindUI() {
   el('btnPixelFontSetup').addEventListener('click', pixelFontSetup);
   bindFontSelectArrows();
   bindPreviewZoom();
+  bindClickToEdit();
   bindSidebarResizer();
   // any setting control (primary or copy): sync its twins, then re-layout
   // (capture phase, so events that don't bubble, e.g. dispatched from code, are caught too)
@@ -4450,7 +4626,7 @@ async function init() {
 init().catch((e) => { console.error(e); setExportStatus(`Startup error: ${e.message}`, 'error'); });
 
 // Exposed for automated verification (see README > Testing); not used by the UI.
-window.__tvguide = { promoStateAt, promoImagesChosen, findPromoImage, PROMO_TRANSITIONS, imageLib, speedAt, solveSpeeds, EASE_CURVES, headerLib, blockLib, libPersist, libDelete, newHeaderStyle, newBlock, setFixedBlocks, resolveBlocks, loadInAt, clearTextCache, getTextImage, measureTextWidth, state, render, renderFrame, rebuild, scrollAt, fpsEntry, resolveBitrate, resolveVideoFill, bannerLib, newBannerPreset, persistBannerPreset, deleteBannerPreset, setBannerQueue, bannerLibraryJSON, importBannerLibrary, makeBannerRow, ensureBannerImages, openBannerEditor, resetLook, LOOK_KEYS, headerPositions, buildLayout, fontLib, addFontFiles, syncFolderFonts, resolveFontRoles, computeTiming, createGreyboxSkin, fitText, setTime, exportMP4, exportPNGSequence, exportState, chooseEncoderConfig, pickAvcLevel, loadTestData, generateTestData, parseCSV, loadCSVText, csvSelection, DEFAULTS };
+window.__tvguide = { hitTestAt, pickAt, goToPickTarget, gridItemsAt, promoStateAt, promoImagesChosen, findPromoImage, PROMO_TRANSITIONS, imageLib, speedAt, solveSpeeds, EASE_CURVES, headerLib, blockLib, libPersist, libDelete, newHeaderStyle, newBlock, setFixedBlocks, resolveBlocks, loadInAt, clearTextCache, getTextImage, measureTextWidth, state, render, renderFrame, rebuild, scrollAt, fpsEntry, resolveBitrate, resolveVideoFill, bannerLib, newBannerPreset, persistBannerPreset, deleteBannerPreset, setBannerQueue, bannerLibraryJSON, importBannerLibrary, makeBannerRow, ensureBannerImages, openBannerEditor, resetLook, LOOK_KEYS, headerPositions, buildLayout, fontLib, addFontFiles, syncFolderFonts, resolveFontRoles, computeTiming, createGreyboxSkin, fitText, setTime, exportMP4, exportPNGSequence, exportState, chooseEncoderConfig, pickAvcLevel, loadTestData, generateTestData, parseCSV, loadCSVText, csvSelection, DEFAULTS };
 </script>
 </body>
 </html>

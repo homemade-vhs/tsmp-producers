@@ -252,6 +252,56 @@ if (near(info.videoRect.w / info.videoRect.h, 4 / 3, 0.01) && info.videoRect.x =
   if (ok) pass('promo: image panels, wipe / fade / mix / cut transitions'); else fail('promo transitions', JSON.stringify(r));
 }
 
+// 7f. click-to-edit: hit testing finds the right part, and picking reveals its settings (uncollapsing the section)
+{
+  const r = await page.evaluate(async () => {
+    const T = window.__tvguide, { state } = T;
+    await T.rebuild(); T.setTime(5);
+    const S = state.skin, g = S.gridRect, t = 5;
+    const label = (x, y) => { const h = T.hitTestAt(x, y, t); return h ? h.label : null; };
+    const { items } = T.gridItemsAt(t);
+    const row = items.find((it) => it.kind === 0 && it.row.type === 'row' && it.y > g.y + S.headerHeight + 2 && it.y + it.row.height < g.y + g.h);
+    const out = {
+      video: label(S.videoRect.x + 5, S.videoRect.y + 5),
+      promo: label(S.promoRect.x + S.promoRect.w / 2, S.promoRect.y + S.promoRect.h / 2),
+      clock: label(g.x + 5, g.y + 5),
+      header: label(g.x + g.w / 2, g.y + 5),
+      tile: row ? label(g.x + 5, row.y + 5) : 'no row',
+      cell: row ? label(g.x + g.w - 5, row.y + 5) : 'no row',
+    };
+    // picking: collapse the Promo panel section, click the promo in the preview, it opens and flashes
+    const legend = [...document.querySelectorAll('.controls > fieldset > legend')].find((l) => l.textContent === 'Promo panel');
+    legend.parentElement.classList.add('collapsed');
+    const rect = document.getElementById('outputCanvas').getBoundingClientRect();
+    const c = state.crop || { x: 0, y: 0 };
+    const toClient = (x, y) => [rect.left + ((x * state.pxScale.x - c.x) * rect.width) / document.getElementById('outputCanvas').width, rect.top + ((y * state.pxScale.y - c.y) * rect.height) / document.getElementById('outputCanvas').height];
+    const [cx, cy] = toClient(S.promoRect.x + S.promoRect.w / 2, S.promoRect.y + S.promoRect.h / 2);
+    const hit = T.pickAt(cx, cy);
+    const ta = document.querySelector('[data-setting="promosText"]:not([data-mirror])').closest('label');
+    out.picked = hit && hit.label;
+    out.opened = !legend.parentElement.classList.contains('collapsed');
+    out.flashed = ta.classList.contains('flash');
+    out.pop = !!document.querySelector('.pick-pop');
+    // every target of every part resolves to a node
+    const hits = [[S.videoRect.x + 5, S.videoRect.y + 5], [S.promoRect.x + 5, S.promoRect.y + 5], [g.x + 5, g.y + 5], [g.x + g.w / 2, g.y + 5], [5, 5]];
+    if (row) hits.push([g.x + 5, row.y + 5], [g.x + g.w - 5, row.y + 5]);
+    out.unresolved = [];
+    for (const [x, y] of hits) for (const tg of T.hitTestAt(x, y, t).targets) if (!T.goToPickTarget(tg)) out.unresolved.push(tg.label);
+    // the same in the "by part" arrangement: targets land on the visible copies
+    document.querySelector('#panelNav [data-view="part"]').click();
+    T.goToPickTarget({ label: 'Promo panels', key: 'promosText' });
+    const flashedCopy = [...document.querySelectorAll('[data-setting="promosText"][data-mirror]')].some((n) => n.closest('label').classList.contains('flash'));
+    out.partView = flashedCopy;
+    document.querySelector('#panelNav [data-view="tool"]').click();
+    document.querySelector('.pick-pop') && document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    for (const id of ['headerEditor', 'bannerEditor', 'blockEditor']) document.getElementById(id).hidden = true;
+    return out;
+  });
+  const ok = r.video === 'Video window' && r.promo === 'Promo panel' && /clock/i.test(r.clock) && /header/i.test(r.header) && /^Channel tile/.test(r.tile) && /^Name cell/.test(r.cell)
+    && r.picked === 'Promo panel' && r.opened && r.flashed && r.pop && r.unresolved.length === 0 && r.partView;
+  if (ok) pass('click-to-edit: hit test + jump to settings (both arrangements)'); else fail('click-to-edit', JSON.stringify(r));
+}
+
 // 8. reference frames
 const shot = async (t, name) => {
   await page.evaluate((t) => window.__tvguide.setTime(t), t);

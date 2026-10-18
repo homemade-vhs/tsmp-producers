@@ -217,6 +217,41 @@ if (near(info.videoRect.w / info.videoRect.h, 4 / 3, 0.01) && info.videoRect.x =
   if (JSON.stringify(r.cells) === JSON.stringify(want) && r.censored === 4 && r.none === 0) pass('word filter'); else fail('word filter', JSON.stringify(r));
 }
 
+// 7e. promo panels: image panels + transitions (wipe reveals the new panel from the right, fade mixes, mix cycles, cut is instant)
+{
+  const r = await page.evaluate(async () => {
+    const T = window.__tvguide;
+    const set = (k, v) => { const i = document.querySelector(`[data-setting="${k}"]`); if (i.type === 'checkbox') i.checked = v; else i.value = v; };
+    const keys = ['promosText', 'promoIntervalSeconds', 'promoTransition', 'promoTransitionFrames', 'promoImageFit'];
+    const before = Object.fromEntries(keys.map((k) => [k, document.querySelector(`[data-setting="${k}"]`).value]));
+    const solid = (color) => { const c = document.createElement('canvas'); c.width = 40; c.height = 30; const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, 40, 30); return c.toDataURL('image/png'); };
+    await T.libPersist(T.imageLib, T.imageLib.make({ id: 'test-promo-red', kind: 'promo', name: 'red.png', dataUrl: solid('#ff0000') }));
+    await T.libPersist(T.imageLib, T.imageLib.make({ id: 'test-promo-blue', kind: 'promo', name: 'blue.png', dataUrl: solid('#0000ff') }));
+    set('promosText', 'image: red.png\nimage: Blue.PNG'); set('promoIntervalSeconds', 1); set('promoTransition', 'wipe-left'); set('promoTransitionFrames', 12); set('promoImageFit', 'stretch');
+    await T.rebuild();
+    const { state } = T, ctx = state.renderCtx, R = state.skin.promoRect, fps = state.config.fps;
+    const px = (fx, t) => { T.render(ctx, t); return Array.from(ctx.getImageData(Math.round(R.x + R.w * fx), Math.round(R.y + R.h / 2), 1, 1).data.slice(0, 3)); };
+    const out = {
+      found: state.promos.map((p) => !!p.img),
+      hold: [px(0.25, 0.5), px(0.75, 0.5)],
+      mid: [px(0.25, 1 + 6 / fps), px(0.75, 1 + 6 / fps)],
+      after: [px(0.25, 1 + 13 / fps), px(0.75, 1 + 13 / fps)],
+      kindMid: T.promoStateAt(1 + 6 / fps).kind,
+    };
+    set('promoTransition', 'fade'); await T.rebuild(); out.fade = px(0.5, 1 + 6 / fps);
+    set('promoTransition', 'mix'); await T.rebuild(); out.mix = [1, 2, 3].map((k) => T.promoStateAt(k + 1 / fps).kind);
+    set('promoTransition', 'cut'); await T.rebuild(); out.cut = [px(0.75, 1 + 1 / fps), T.promoStateAt(1 + 1 / fps).kind || null];
+    for (const k of keys) set(k, before[k]);
+    await T.libDelete(T.imageLib, 'test-promo-red'); await T.libDelete(T.imageLib, 'test-promo-blue');
+    await T.rebuild();
+    return out;
+  });
+  const RED = [255, 0, 0], BLUE = [0, 0, 255], eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const ok = eq(r.found, [true, true]) && eq(r.hold, [RED, RED]) && eq(r.mid, [RED, BLUE]) && eq(r.after, [BLUE, BLUE]) && r.kindMid === 'wipe-left'
+    && r.fade[0] > 60 && r.fade[2] > 60 && eq(r.mix, ['wipe-left', 'wipe-right', 'wipe-up']) && eq(r.cut, [BLUE, null]);
+  if (ok) pass('promo: image panels, wipe / fade / mix / cut transitions'); else fail('promo transitions', JSON.stringify(r));
+}
+
 // 8. reference frames
 const shot = async (t, name) => {
   await page.evaluate((t) => window.__tvguide.setTime(t), t);

@@ -496,15 +496,38 @@
   </fieldset>
 
   <fieldset style="--tint: #ff9f45" data-view="tool">
-    <legend>Header clock &amp; promo panel</legend>
+    <legend>Header clock</legend>
     <div class="grid2">
       <label><span>Clock box shows</span><select data-setting="clockContent"><option value="clock">the live clock</option><option value="text">custom text</option></select></label>
       <label><span>Custom clock text</span><input type="text" data-setting="clockCustomText" placeholder="e.g. EP 12, 11/14/26, SUPERMEGA"></label>
       <label><span>Clock start (H:MM:SS, 24h ok)</span><input type="text" data-setting="clockStart" class="mono"></label>
-      <label><span>Promo interval (seconds)</span><input type="number" data-setting="promoIntervalSeconds" min="0.5" step="0.5"></label>
     </div>
     <div class="hint">Custom text replaces the clock in its box everywhere (every header, or the pinned clock). It's shrunk to fit the box like any other text; Min font scale applies.</div>
-    <label><span>Promo panels (one per line; <code>|</code> starts a new line inside a panel)</span><textarea data-setting="promosText" rows="2"></textarea></label>
+  </fieldset>
+
+  <fieldset style="--tint: #ff9f45" data-view="tool">
+    <legend>Promo panel</legend>
+    <label><span>Promo panels (one per line; <code>|</code> starts a new line inside a panel; <code>image: name.png</code> shows a promo image, add <code>| text</code> to write over it)</span><textarea data-setting="promosText" rows="3"></textarea></label>
+    <div class="grid3">
+      <label><span>Promo interval (seconds)</span><input type="number" data-setting="promoIntervalSeconds" min="0.5" step="0.5"></label>
+      <label><span>Transition</span><select data-setting="promoTransition">
+        <option value="cut">cut</option>
+        <option value="wipe-left" title="new panel wipes in from the right">wipe ←</option><option value="wipe-right" title="new panel wipes in from the left">wipe →</option>
+        <option value="wipe-up" title="new panel wipes in from the bottom">wipe ↑</option><option value="wipe-down" title="new panel wipes in from the top">wipe ↓</option>
+        <option value="push-left">push ←</option><option value="push-right">push →</option><option value="push-up">push ↑</option><option value="push-down">push ↓</option>
+        <option value="barn" title="opens from the centre outwards">barn doors</option><option value="blinds">blinds</option><option value="fade">crossfade</option>
+        <option value="mix" title="a different transition each time, always in the same order">mix</option>
+      </select></label>
+      <label><span>Transition length (frames)</span><input type="number" data-setting="promoTransitionFrames" min="0" step="1"></label>
+    </div>
+    <div class="promo-images">
+      <div class="grid2">
+        <label><span>Promo image fit</span><select data-setting="promoImageFit"><option value="contain">contain (whole image)</option><option value="cover">cover (fill, crop edges)</option><option value="stretch">stretch</option><option value="none">actual size (1:1, no scaling)</option></select></label>
+        <div><label><span>Promo images</span></label><label class="sm-btn">Add images…<input type="file" accept="image/*" multiple data-action="promo-images-file" hidden></label><div class="hint mono promo-size"></div></div>
+      </div>
+      <div class="qlist promo-images-list"></div>
+    </div>
+    <div class="hint">Transitions play at the start of each panel (not the first). Adding an image with the same name as one already here replaces it, so re-exported designs update in place. Saved in this browser; included in exported themes when "include banners…" is ticked.</div>
   </fieldset>
 
   <fieldset style="--tint: #ff5d5d" data-view="tool">
@@ -649,6 +672,9 @@ const DEFAULTS = {
   clockContent: 'clock',        // 'clock': live H:MM:SS | 'text': clockCustomText instead
   clockCustomText: 'EP 1',
   promoIntervalSeconds: 10,
+  promoTransition: 'wipe-left', // cut | wipe-left/right/up/down | push-left/right/up/down | barn | blinds | fade | mix (cycles through them)
+  promoTransitionFrames: 12,    // length of each promo transition; it plays at the start of the incoming panel
+  promoImageFit: 'contain',     // how an image panel fills the promo panel: contain | cover | stretch | none (1:1)
   promosText: 'TO BECOME A PRODUCER|patreon.com/supermega\nTV GUIDE|CHANNEL',
   // output
   videoAspect: '4:3',           // aspect of the video window (podcast footage is 3328×2496 = 4:3)
@@ -876,9 +902,14 @@ function filterNames(names, filter, report) {
   return names.map((n) => { const out = filter(n); if (out !== n) report.push({ from: n, to: out }); return out; });
 }
 
-/** Promo panels: one per line; '|' separates lines inside a panel. */
+/** Promo panels: one per line; '|' separates lines inside a panel. `image: name | text…` = a promo image (text drawn over it). */
 function parsePromoPanels(text) {
-  return splitLines(text).map((line) => ({ lines: line.split('|').map((s) => s.trim()).filter(Boolean) })).filter((p) => p.lines.length);
+  return splitLines(text).map((line) => {
+    const parts = line.split('|').map((s) => s.trim());
+    const m = /^image\s*:\s*(.*)$/i.exec(parts[0]);
+    if (m) return { image: m[1].trim(), lines: parts.slice(1).filter(Boolean) };
+    return { lines: parts.filter(Boolean) };
+  }).filter((p) => p.image || p.lines.length);
 }
 
 /** RFC-4180-ish CSV: quoted fields, doubled quotes, CR/LF/CRLF. Returns array of rows (arrays of strings). */
@@ -1084,6 +1115,17 @@ async function decodeLibraryImage(id) {
   const img = new Image(); img.src = rec.dataUrl;
   try { await img.decode(); decodedImages.set(id, { src: rec.dataUrl, img }); return img; }
   catch (e) { console.warn('Image failed to decode:', rec.name, e); return null; }
+}
+/** Promo images live in the same image store, marked kind: 'promo', and are referenced from the panels by name. */
+const promoImageRecords = () => Array.from(imageLib.presets.values()).filter((r) => r.kind === 'promo').sort((a, b) => a.name.localeCompare(b.name));
+const findPromoImage = (name) => promoImageRecords().find((r) => r.name.toLowerCase() === String(name || '').toLowerCase()) || null;
+/** Panels with their images attached (decoded before anything is drawn). A missing image keeps img: null and is drawn as a placeholder. */
+async function resolvePromoPanels(panels) {
+  return Promise.all(panels.map(async (p) => {
+    if (!p.image) return p;
+    const rec = findPromoImage(p.image);
+    return { ...p, img: rec ? await decodeLibraryImage(rec.id) : null };
+  }));
 }
 const DEFAULT_HEADER_STYLES = [
   { id: 'default-header', name: 'Blue (time bar)', textColor: '#ffe94a' },   // yellow titles, like the reference time slots
@@ -1714,7 +1756,8 @@ function speedAt(timing, t) {
 //      loadFonts() → Promise            (layout never runs before this resolves)
 //      drawBackground(ctx, opts)        opts.transparentBg → paint nothing
 //      drawVideoWindow(ctx, opts)       opts.transparentWindow → window cleared to alpha 0 (frame still drawn when boxed)
-//      drawPromoPanel(ctx, panel, opts) panel = { lines: [...] } | null
+//      drawPromoPanel(ctx, panel, opts) panel = { lines: [...], image?, img? } | null
+//      drawPromoTransition(ctx, from, to, kind, p)   kind = one of PROMO_TRANSITIONS, p = 0..1
 //      Every grid draw takes info = { tier: 'exec'|'prod', parts: { box, content } } (parts = cable-box load-in stage)
 //      drawHeader(ctx, rect, header, clockText, info)     header = { title: fit, style: header style preset }
 //      drawClockBox(ctx, rect, clockText, style, info)    pinned clock (clockMode 'pinned')
@@ -2084,14 +2127,77 @@ function createGreyboxSkin(W, H, options = {}) {
       else { ctx.fillStyle = videoFill; ctx.fillRect(videoRect.x, videoRect.y, videoRect.w, videoRect.h); }
     },
 
+    /** The area a promo panel may paint (promo rect + one bevel all round), whole pixels. Transitions clip to it. */
+    promoArea() {
+      if (!promoRect) return null;
+      const x = Math.floor(promoRect.x - bevel), y = Math.floor(promoRect.y - bevel);
+      return { x, y, w: Math.ceil(promoRect.x + promoRect.w + bevel) - x, h: Math.ceil(promoRect.y + promoRect.h + bevel) - y };
+    },
+
     drawPromoPanel(ctx, panel) {
-      if (!promoRect || !panel || !panel.lines.length) return;
+      if (!promoRect || !panel || (!panel.image && !panel.lines.length)) return;
       const box = this.textBox('promo', { x: promoRect.x - bevel, y: promoRect.y - bevel, w: promoRect.w + bevel * 2, h: promoRect.h + bevel * 2 });
-      const lines = panel.lines.map((line, i) => {
+      let text = panel.lines;
+      if (panel.image) {
+        if (panel.img) drawImageFit(ctx, panel.img, promoRect, options.promoImageFit || 'contain', stretch);
+        else if (!text.length) text = ['MISSING IMAGE', panel.image];   // named in the panels but not in the promo images list
+      }
+      const lines = text.map((line, i) => {
         const fit = fitText(ctx, fonts.spec('promo', fonts.promo), line, box.w, minScale);
         return { text: fit.text, px: fit.px, color: i === 0 ? colors.promoText : colors.promoAccent };
       });
-      drawLines(ctx, 'promo', box, lines, colors.promoText);
+      if (lines.length) drawLines(ctx, 'promo', box, lines, colors.promoText);
+    },
+
+    /** One frame of a promo transition: `from` → `to` at progress p (0..1). Each panel is drawn into its own layer, then composited. */
+    drawPromoTransition(ctx, from, to, kind, p) {
+      const R = this.promoArea(); if (!R) return;
+      const layer = (key, panel) => {
+        let c = this[key];
+        if (!c || c.width !== R.w || c.height !== R.h) { c = document.createElement('canvas'); c.width = R.w; c.height = R.h; this[key] = c; }
+        const x = c.getContext('2d');
+        x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, R.w, R.h);
+        x.setTransform(1, 0, 0, 1, -R.x, -R.y);
+        this.drawPromoPanel(x, panel);
+        return c;
+      };
+      const A = layer('_promoA', from), B = layer('_promoB', to);
+      const clipDraw = (img, rects, dx = 0, dy = 0, alpha = 1) => {
+        ctx.save();
+        ctx.beginPath(); for (const r of rects) if (r.w > 0 && r.h > 0) ctx.rect(R.x + r.x, R.y + r.y, r.w, r.h); ctx.clip();
+        ctx.globalAlpha = alpha; ctx.drawImage(img, R.x + dx, R.y + dy);
+        ctx.restore();
+      };
+      const W = R.w, H = R.h, full = [{ x: 0, y: 0, w: W, h: H }];
+      const ease = p * p * (3 - 2 * p);   // smoothstep: pushes start and land softly; wipes stay linear like the old channel
+      const ex = Math.round(W * p), ey = Math.round(H * p);
+      switch (kind) {
+        case 'fade': clipDraw(A, full, 0, 0, 1 - p); clipDraw(B, full, 0, 0, p); break;
+        case 'wipe-left': clipDraw(A, [{ x: 0, y: 0, w: W - ex, h: H }]); clipDraw(B, [{ x: W - ex, y: 0, w: ex, h: H }]); break;
+        case 'wipe-right': clipDraw(A, [{ x: ex, y: 0, w: W - ex, h: H }]); clipDraw(B, [{ x: 0, y: 0, w: ex, h: H }]); break;
+        case 'wipe-up': clipDraw(A, [{ x: 0, y: 0, w: W, h: H - ey }]); clipDraw(B, [{ x: 0, y: H - ey, w: W, h: ey }]); break;
+        case 'wipe-down': clipDraw(A, [{ x: 0, y: ey, w: W, h: H - ey }]); clipDraw(B, [{ x: 0, y: 0, w: W, h: ey }]); break;
+        case 'push-left': { const o = Math.round(W * ease); clipDraw(A, full, -o, 0); clipDraw(B, full, W - o, 0); break; }
+        case 'push-right': { const o = Math.round(W * ease); clipDraw(A, full, o, 0); clipDraw(B, full, o - W, 0); break; }
+        case 'push-up': { const o = Math.round(H * ease); clipDraw(A, full, 0, -o); clipDraw(B, full, 0, H - o); break; }
+        case 'push-down': { const o = Math.round(H * ease); clipDraw(A, full, 0, o); clipDraw(B, full, 0, o - H); break; }
+        case 'barn': {
+          const half = Math.round((W / 2) * p), mid = Math.round(W / 2);
+          clipDraw(A, [{ x: 0, y: 0, w: mid - half, h: H }, { x: mid + half, y: 0, w: W - mid - half, h: H }]);
+          clipDraw(B, [{ x: mid - half, y: 0, w: half * 2, h: H }]);
+          break;
+        }
+        case 'blinds': {
+          const n = 8, a = [], b = [];
+          for (let i = 0; i < n; i++) {
+            const y0 = Math.round((H * i) / n), y1 = Math.round((H * (i + 1)) / n), cut = Math.round((y1 - y0) * p);
+            b.push({ x: 0, y: y0, w: W, h: cut }); a.push({ x: 0, y: y0 + cut, w: W, h: y1 - y0 - cut });
+          }
+          clipDraw(A, a); clipDraw(B, b);
+          break;
+        }
+        default: clipDraw(B, full);
+      }
     },
 
     /** header = { title: fit, style: header style preset }. info.parts = { box, content } (load-in), clockText only drawn when the clock rides in headers. */
@@ -2184,11 +2290,22 @@ function clockTextAt(t) {
   return formatClock12(state.clockStartSeconds + Math.floor(t));
 }
 
-function promoAt(t) {
+const PROMO_TRANSITIONS = ['wipe-left', 'wipe-right', 'wipe-up', 'wipe-down', 'push-left', 'push-right', 'push-up', 'push-down', 'barn', 'blinds', 'fade'];
+/** The promo at t: { panel } normally, or { from, to, kind, p } while a transition is playing (the first frames of each panel after the first). */
+function promoStateAt(t) {
   const n = state.promos.length;
-  if (!n) return null;
-  const interval = Math.max(0.001, +state.config.promoIntervalSeconds || 10);
-  return state.promos[Math.floor(t / interval) % n];
+  if (!n) return { panel: null };
+  const cfg = state.config;
+  const interval = Math.max(0.001, +cfg.promoIntervalSeconds || 10);
+  const k = Math.floor(t / interval + 1e-9);
+  const panel = state.promos[k % n];
+  const frames = Math.max(0, Math.round(+cfg.promoTransitionFrames || 0));
+  if (n < 2 || k === 0 || !frames || cfg.promoTransition === 'cut') return { panel };
+  const dur = Math.min(frames / cfg.fps, interval * 0.9);
+  const local = t - k * interval;
+  if (local >= dur) return { panel };
+  const kind = cfg.promoTransition === 'mix' ? PROMO_TRANSITIONS[(k - 1) % PROMO_TRANSITIONS.length] : cfg.promoTransition;
+  return { from: state.promos[(k - 1) % n], to: panel, kind, p: clamp(local / dur, 0, 1) };
 }
 
 /** Index of the first row whose bottom edge is below content y = s (rows are contiguous, so binary search). */
@@ -2320,7 +2437,11 @@ function render(ctx, t) {
   ctx.clearRect(0, 0, skin.width, skin.height);
   skin.drawBackground(ctx, opts);
   skin.drawVideoWindow(ctx, opts);
-  if (!reveal || reveal.content > 0) skin.drawPromoPanel(ctx, promoAt(t), opts);
+  if (!reveal || reveal.content > 0) {
+    const promo = promoStateAt(t);
+    if (promo.kind) skin.drawPromoTransition(ctx, promo.from, promo.to, promo.kind, promo.p);
+    else skin.drawPromoPanel(ctx, promo.panel, opts);
+  }
   drawGrid(ctx, t, reveal);
 }
 
@@ -2544,6 +2665,7 @@ function buildLayoutJSON(extra) {
     videoWindow: { ...toOutputRect(skin.videoRect), style: skin.videoWindowStyle, fill: skin.videoFill },
     videoWindowFrame: skin.videoWindowStyle === 'boxed' ? toOutputRect(skin.videoFrameRect) : null,
     promoPanel: skin.promoRect ? toOutputRect(skin.promoRect) : null,
+    promo: { intervalSeconds: config.promoIntervalSeconds, transition: config.promoTransition, transitionFrames: config.promoTransitionFrames, imageFit: config.promoImageFit, panels: state.promos.map((p) => ({ lines: p.lines, image: p.image || null, imageFound: p.image ? !!p.img : null })) },
     gridViewport: toOutputRect(skin.gridRect),
     headerHeightOutput: Math.round(skin.headerHeight * state.pxScale.y),
     rowHeightOutput: Math.round(skin.rowHeight * state.pxScale.y),
@@ -2749,11 +2871,13 @@ function imageDesignSizes() {
   return {
     top: `design at ${fmt(S.width, g.y)} px for 1:1${out(S.width, g.y)} · video window covers x 0–${S.videoRect.w}`,
     banner: `image area ${fmt(box.w - 2 * b, box.h - 2 * b)} px for 1:1 at this banner's height${out(box.w - 2 * b, box.h - 2 * b)}`,
+    promo: S.promoRect ? `design at ${fmt(Math.round(S.promoRect.w), Math.round(S.promoRect.h))} px for 1:1${out(Math.round(S.promoRect.w), Math.round(S.promoRect.h))}` : 'no promo panel while Top area is blank',
   };
 }
 function updateImageSizeHints() {
   const d = imageDesignSizes(); if (!d) return;
   for (const n of document.querySelectorAll('.topbg-size')) n.textContent = d.top;
+  for (const n of document.querySelectorAll('.promo-size')) n.textContent = d.promo;
   if (el('bp-imageSize')) el('bp-imageSize').textContent = d.banner;
 }
 
@@ -2766,6 +2890,52 @@ function updateTopBgInfo() {
 function bindTopBg() {
   document.addEventListener('change', (e) => { if (e.target.dataset && e.target.dataset.action === 'topbg-file') { const f = e.target.files[0]; e.target.value = ''; topBgChosen(f); } });
   document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-action="topbg-remove"]')) topBgRemoved(); });
+}
+
+/** Promo images: add (same name replaces), add as a panel, remove. Delegated so the copy in the "by part" view works too. */
+async function promoImagesChosen(files) {
+  let n = 0;
+  for (const file of files) {
+    if (file.size > 20 * 1024 * 1024) { setExportStatus(`${file.name} is over 20 MB: please use a smaller image.`, 'error'); continue; }
+    const existing = findPromoImage(file.name);
+    const id = existing ? existing.id : `img-${Date.now().toString(36)}-${(++bannerLib.idCounter).toString(36)}`;
+    await libPersist(imageLib, imageLib.make({ id, kind: 'promo', name: file.name, dataUrl: await readFileAsDataURL(file) }));
+    n++;
+  }
+  if (n) setExportStatus(`Added ${n} promo image${n === 1 ? '' : 's'}. Use "Add as panel" or type image: name in the panels.`, 'ok');
+  renderPromoImages(); scheduleRebuild();
+}
+function addPromoImagePanel(name) {
+  const input = primaryInput('promosText');
+  const text = input.value.replace(/\s+$/, '');
+  setSettingValue('promosText', `${text ? text + '\n' : ''}image: ${name}`);
+  scheduleRebuild();
+}
+async function removePromoImage(id) {
+  await libDelete(imageLib, id);
+  renderPromoImages(); scheduleRebuild();
+}
+let promoImagesKey = '';
+function renderPromoImages() {
+  const recs = promoImageRecords();
+  const used = new Set(parsePromoPanels((primaryInput('promosText') || {}).value).filter((p) => p.image).map((p) => p.image.toLowerCase()));
+  const lists = document.querySelectorAll('.promo-images-list');
+  const key = JSON.stringify([lists.length, recs.map((r) => [r.id, r.name, r.dataUrl.length]), [...used]]);
+  if (key === promoImagesKey) return;   // runs on every rebuild: only touch the DOM when something changed
+  promoImagesKey = key;
+  for (const list of lists) {
+    list.innerHTML = '';
+    for (const r of recs) {
+      const item = document.createElement('div'); item.className = 'item';
+      item.innerHTML = `<img src="${r.dataUrl}" alt="" style="height:28px;max-width:56px;object-fit:contain;border-radius:4px;background:#000"><span class="name" title="${esc(r.name)}">${esc(r.name)}</span><span class="hint mono">${Math.round((r.dataUrl.length * 0.75) / 1024)} KB${used.has(r.name.toLowerCase()) ? ' · in use' : ''}</span>`;
+      item.append(smallButton('Add as panel', () => addPromoImagePanel(r.name)), smallButton('Remove', () => removePromoImage(r.id)));
+      list.appendChild(item);
+    }
+    if (!recs.length) list.innerHTML = '<div class="hint">No promo images yet.</div>';
+  }
+}
+function bindPromoImages() {
+  document.addEventListener('change', (e) => { if (e.target.dataset && e.target.dataset.action === 'promo-images-file') { const files = Array.from(e.target.files); e.target.value = ''; promoImagesChosen(files); } });
 }
 
 /** Shadow / stroke value fields dim while their switch is off. */
@@ -2858,7 +3028,10 @@ function buildTheme(cfg, includeLibrary) {
     tool: 'tvguide-credits', kind: 'theme', version: 1, exportedAt: new Date().toISOString(),
     settings: themeSettings(cfg),
     library: includeLibrary ? bannerLibraryJSON(cfg.bannerQueue, cfg.fixedBlocks) : null,
-    images: includeLibrary && cfg.topBgImage && imageLib.presets.has(cfg.topBgImage) ? [imageLib.presets.get(cfg.topBgImage)] : [],
+    images: includeLibrary ? [
+      ...(cfg.topBgImage && imageLib.presets.has(cfg.topBgImage) ? [imageLib.presets.get(cfg.topBgImage)] : []),
+      ...parsePromoPanels(cfg.promosText).filter((p) => p.image).map((p) => findPromoImage(p.image)).filter(Boolean),
+    ] : [],
   };
 }
 /** Apply a theme: its settings replace the current ones (patron lists stay), its library is merged in first so ids resolve. */
@@ -2991,12 +3164,13 @@ async function rebuild() {
   const fontRoles = resolveFontRoles(cfg);
   const topBgImage = await decodeLibraryImage(cfg.topBgImage);   // decoded before anything is drawn, like banner images
   const skin = createGreyboxSkin(internal.w, internal.h, {
-    topBgImage, topBgFit: cfg.topBgFit, topBgDim: cfg.topBgDim,
+    topBgImage, topBgFit: cfg.topBgFit, topBgDim: cfg.topBgDim, promoImageFit: cfg.promoImageFit,
     videoAspect: cfg.videoAspect, outputAspect, designScale: cfg.designScale, topArea: cfg.topArea, videoWindowStyle: cfg.videoWindowStyle, videoFill: resolveVideoFill(cfg),
     look: cfg, fontRoles, textStyles: resolveTextStyles(cfg), textRender: cfg.textRender, textPixelScale: cfg.textPixelScale, clockMode: cfg.clockMode, minFontScale: cfg.minFontScale,
   });
   await skin.loadFonts();                       // never measure text before this
   await ensureBannerImages(usedBannerIds(cfg).map((id) => bannerLib.presets.get(id)).filter(Boolean)); // ...or draw an image before it's decoded
+  const promos = await resolvePromoPanels(parsePromoPanels(cfg.promosText));
   if (gen !== rebuildGeneration) return;        // a newer rebuild superseded this one
   clearTextCache();
 
@@ -3026,7 +3200,7 @@ async function rebuild() {
   const timing = computeTiming(layout, cfg, skin);
   Object.assign(state, {
     config: cfg, skin, layout, timing, renderCanvas, renderCtx, fullOutput: out, pxScale, crop, fontRoles, clockStyle: resolveHeaderStyle(cfg.clockStyle),
-    promos: parsePromoPanels(cfg.promosText), clockStartSeconds: parseClockString(cfg.clockStart),
+    promos, clockStartSeconds: parseClockString(cfg.clockStart),
   });
 
   el('scrubber').max = cfg.totalFrames - 1;
@@ -3038,6 +3212,7 @@ async function rebuild() {
   refreshMirrors();
   updateTopBgInfo();
   updateImageSizeHints();
+  renderPromoImages();
   updateNameCounts();
   updateWordFilterReport();
   setTime(preview.t);
@@ -3810,7 +3985,7 @@ const PARTS = [
   { title: 'Header bars & clock', tint: '#7c83ff', keys: ['headerHeightPx', 'clockMode', 'clockStyle', 'clockContent', 'clockCustomText', 'clockStart', 'openingHeader', 'openingHeaderText', 'openingHeaderStyle'],
     fonts: ['Header', 'Clock'], roles: ['Header', 'Clock'], jump: ['Headers', 'Header styles (colours) and the opening header live in Headers'] },
   { title: 'Banners', tint: '#ffd24a', keys: ['bannerHeightPx'], fonts: ['Banner'], roles: ['Banner'], jump: ['Banners &', 'Banner presets, blocks and the queue live in Banners & blocks'] },
-  { title: 'Promo panel', tint: '#ff9f45', keys: ['promosText', 'promoIntervalSeconds', 'colPromoText', 'colPromoAccent'], fonts: ['Promo'], roles: ['Promo'] },
+  { title: 'Promo panel', tint: '#ff9f45', keys: ['promosText', 'promoIntervalSeconds', 'promoTransition', 'promoTransitionFrames', 'colPromoText', 'colPromoAccent'], fonts: ['Promo'], roles: ['Promo'], extra: ['.promo-images'] },
   { title: 'Boxes & background', tint: '#2fd1a6', keys: ['bevelPx', 'gapPx', 'rowHeightPx', 'colGrid', 'colBgTop', 'colBgBottom', 'textRender', 'textPixelScale'], extra: ['.topbg-chooser'] },
   { title: 'Motion & timing', tint: '#5b8cff', keys: ['duration', 'fps', 'speedRatio', 'endBehavior', 'leadIn', 'startHoldFrames', 'loadInFrames', 'easeInFrames', 'easeInCurve', 'sectionEaseFrames', 'sectionEaseCurve', 'scrollMotion'] },
   { title: 'Output', tint: '#ff5d5d', keys: ['outputRes', 'internalRes', 'upscaleMode', 'pixelSnap', 'videoAspect', 'exportRegion', 'topArea', 'videoWindowStyle', 'videoFill', 'videoFillCustom', 'bitrateMbps', 'designScale'] },
@@ -4133,6 +4308,7 @@ function bindSidebarResizer() {
 function bindUI() {
   bindCollapsibleSections();
   bindTopBg();
+  bindPromoImages();
   bindPanelNav();
   bindTimeline();
   for (const sel of document.querySelectorAll('.res-select')) sel.addEventListener('input', syncResCustomFields);
@@ -4274,7 +4450,7 @@ async function init() {
 init().catch((e) => { console.error(e); setExportStatus(`Startup error: ${e.message}`, 'error'); });
 
 // Exposed for automated verification (see README > Testing); not used by the UI.
-window.__tvguide = { speedAt, solveSpeeds, EASE_CURVES, headerLib, blockLib, libPersist, libDelete, newHeaderStyle, newBlock, setFixedBlocks, resolveBlocks, loadInAt, clearTextCache, getTextImage, measureTextWidth, state, render, renderFrame, rebuild, scrollAt, fpsEntry, resolveBitrate, resolveVideoFill, bannerLib, newBannerPreset, persistBannerPreset, deleteBannerPreset, setBannerQueue, bannerLibraryJSON, importBannerLibrary, makeBannerRow, ensureBannerImages, openBannerEditor, resetLook, LOOK_KEYS, headerPositions, buildLayout, fontLib, addFontFiles, syncFolderFonts, resolveFontRoles, computeTiming, createGreyboxSkin, fitText, setTime, exportMP4, exportPNGSequence, exportState, chooseEncoderConfig, pickAvcLevel, loadTestData, generateTestData, parseCSV, loadCSVText, csvSelection, DEFAULTS };
+window.__tvguide = { promoStateAt, promoImagesChosen, findPromoImage, PROMO_TRANSITIONS, imageLib, speedAt, solveSpeeds, EASE_CURVES, headerLib, blockLib, libPersist, libDelete, newHeaderStyle, newBlock, setFixedBlocks, resolveBlocks, loadInAt, clearTextCache, getTextImage, measureTextWidth, state, render, renderFrame, rebuild, scrollAt, fpsEntry, resolveBitrate, resolveVideoFill, bannerLib, newBannerPreset, persistBannerPreset, deleteBannerPreset, setBannerQueue, bannerLibraryJSON, importBannerLibrary, makeBannerRow, ensureBannerImages, openBannerEditor, resetLook, LOOK_KEYS, headerPositions, buildLayout, fontLib, addFontFiles, syncFolderFonts, resolveFontRoles, computeTiming, createGreyboxSkin, fitText, setTime, exportMP4, exportPNGSequence, exportState, chooseEncoderConfig, pickAvcLevel, loadTestData, generateTestData, parseCSV, loadCSVText, csvSelection, DEFAULTS };
 </script>
 </body>
 </html>
